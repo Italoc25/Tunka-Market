@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Base de datos (por ahora si usas sqlite para pruebas)
+*.sqlite3
+
+# Entornos virtuales
+.venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
