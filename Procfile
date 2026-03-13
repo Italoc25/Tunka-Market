@@ -1,0 +1,1 @@
+web: gunicorn tunka_server.wsgi

@@ -1,0 +1,51 @@
+/* 1. Solo centrar y ajustar la columna 'disponible' en la LISTA */
+.change-list .field-disponible, 
+.change-list .column-disponible {
+    text-align: center !important;
+    width: 80px;
+}
+
+/* 2. Ajustar la tabla general */
+.change-list #result_list th, 
+.change-list #result_list td {
+    padding: 8px 5px !important;
+    font-size: 13px;
+}
+
+/* 3. Limitar el nombre solo en la lista */
+.change-list .field-nombre {
+    max-width: 300px !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 4. REPARACIÓN DE FORMULARIOS */
+.change-form .aligned label {
+    width: 160px !important;
+}
+
+.change-form .vTextField, 
+.change-form .vIntegerField,
+.change-form select {
+    width: 400px !important;
+    max-width: 90% !important;
+}
+
+/* 5. ESTILO PARA EL BOTÓN DE BÚSQUEDA (LISTA Y FORMULARIO) */
+.field-ver_buscador a, 
+.readonly a {
+    background-color: #007bff !important;
+    color: white !important;
+    padding: 6px 12px !important;
+    border-radius: 4px !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+    transition: 0.3s;
+}
+
+.field-ver_buscador a:hover, 
+.readonly a:hover {
+    background-color: #0056b3 !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
+}

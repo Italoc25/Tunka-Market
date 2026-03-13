@@ -1,0 +1,36 @@
+{% extends 'inventario/base.html' %}
+{% load static %} 
+
+{% block content %}
+<div class="row align-items-center py-4 py-md-5">
+    <div class="col-md-6 order-2 order-md-1 text-center text-md-start">
+        <h1 class="display-4 fw-bold text-black mt-3 mt-md-0">Bienvenido a Market Tunka</h1>
+        <p class="lead">Tu minimarket de confianza, ahora más cerca de ti. Consulta nuestros precios y stock en tiempo real.</p>
+        
+        <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
+            <a href="{% url 'productos' %}" class="btn btn-outline-secondary btn-lg px-4 me-md-2 rounded-pill">
+                <i class="bi bi-box-seam me-2"></i>Ver Productos
+            </a>
+            <a href="{% url 'verificador' %}" class="btn btn-primary btn-lg px-4 rounded-pill shadow">
+                <i class="bi bi-upc-scan me-2"></i>Escanear código
+            </a>
+        </div>
+    </div>
+
+    <div class="col-md-6 text-center order-1 order-md-2">
+        <img src="{% static 'img/logo_tunka.jpg' %}" 
+             alt="Logo Tunka Market" 
+             class="img-fluid" 
+             style="max-height: 350px; width: auto;">
+    </div>
+</div>
+
+<style>
+    /* Ajuste extra para que el título no sea tan gigante en pantallas muy pequeñas */
+    @media (max-width: 576px) {
+        .display-4 {
+            font-size: 2.2rem;
+        }
+    }
+</style>
+{% endblock %}

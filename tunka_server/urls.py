@@ -1,24 +1,21 @@
-"""
-URL configuration for tunka_server project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/4.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
+# tunka_server/urls.py
 from django.contrib import admin
 from django.urls import path
-from inventario.views import buscador_precios # Importamos la vista
+from django.conf import settings
+from django.conf.urls.static import static
+from inventario.views import buscador_productos, home, contacto, verificador_precios, api_buscar_producto, detalle_producto, autocomplete_productos, pedir_reposicion
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', buscador_precios, name='buscador'), # Ruta principal
+    path('', home, name='home'),                      
+    path('productos/', buscador_productos, name='productos'), 
+    path('producto/<int:pk>/', detalle_producto, name='detalle_producto'),
+    path('contacto/', contacto, name='contacto'),
+    path('verificador/', verificador_precios, name='verificador'),
+    path('api/producto/<str:codigo>/', api_buscar_producto, name='api_buscar_producto'),
+    path('autocomplete/', autocomplete_productos, name='autocomplete'),
+    path('pedir-reposicion/<int:pk>/', pedir_reposicion, name='pedir_reposicion'),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

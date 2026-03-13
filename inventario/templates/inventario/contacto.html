@@ -1,0 +1,100 @@
+{% extends 'inventario/base.html' %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="text-center mb-5 fw-bold">Contacto - Tunka Market</h2>
+
+    <div class="row g-4 mb-5">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100 p-4 border-0 rounded-3">
+                <h4><i class="bi bi-whatsapp text-success"></i> WhatsApp</h4>
+                <p>Escríbenos para consultas rápidas sobre pedidos o stock:</p>
+                <a href="https://wa.me/56999028623" target="_blank" class="btn btn-success fw-bold rounded-pill">
+                    Hablar por WhatsApp
+                </a>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100 p-4 border-0 rounded-3">
+                <h4><i class="bi bi-geo-alt-fill text-danger"></i> Ubicación</h4>
+                <p><strong>Dirección:</strong> Jardín Alto #9729, La Florida</p>
+                <a href="https://maps.app.goo.gl/6cXnoMRYWM1zK6CcA" target="_blank" class="btn btn-outline-danger fw-bold rounded-pill">
+                    Ver en Google Maps
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow border-0 rounded-4 overflow-hidden">
+                <div class="card-header bg-primary text-white p-3 text-center">
+                    <h4 class="mb-0"><i class="bi bi-mailbox me-2"></i> Buzón de Sugerencias y Nuevos Productos</h4>
+                </div>
+                <div class="card-body p-4 p-md-5">
+                    
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm" role="alert">
+                                <strong>¡Recibido!</strong> {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+
+                    <form method="POST" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label fw-bold">¿Qué quieres decirnos?</label>
+                                <select name="tipo" class="form-select border-2">
+                                    <option value="PRODUCTO">📦 Sugerir un producto nuevo</option>
+                                    <option value="CRITICA">⚠️ Crítica o sugerencia de mejora</option>
+                                    <option value="FELICITACION">⭐ Felicitación</option>
+                                    <option value="OTRO">📝 Otro</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Tu Nombre (Opcional)</label>
+                                <input type="text" name="nombre" class="form-control border-2" placeholder="Ej: Juan Pérez">
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold">Tu Correo (Opcional)</label>
+                                <input type="email" name="email" class="form-control border-2" placeholder="ejemplo@correo.com">
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <label class="form-label fw-bold">Detalle de tu mensaje</label>
+                                <textarea name="mensaje" class="form-control border-2" rows="4" required placeholder="Describe el producto que buscas o cuéntanos tu opinión..."></textarea>
+                            </div>
+
+                            <div class="col-12 mb-4">
+                                <label class="form-label fw-bold">📸 ¿Tienes una foto de referencia? (Opcional)</label>
+                                <input type="file" name="imagen" class="form-control border-2" accept="image/*">
+                            </div>
+
+                            <div class="col-12 d-grid">
+                                <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill">
+                                    Enviar al equipo de Tunka
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card { transition: transform 0.2s; }
+    .card:hover { transform: translateY(-5px); }
+    .form-control:focus, .form-select:focus { 
+        border-color: #0d6efd; 
+        box-shadow: none; 
+    }
+</style>
+{% endblock %}
