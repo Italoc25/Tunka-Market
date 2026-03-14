@@ -1,1 +1,1 @@
-web: python manage.py migrate --noinput && gunicorn tunka_server.wsgi
+web: python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn tunka_server.wsgi
