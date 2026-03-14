@@ -1,1 +1,1 @@
-web: gunicorn tunka_server.wsgi
+web: python manage.py migrate && gunicorn tunka_server.wsgi

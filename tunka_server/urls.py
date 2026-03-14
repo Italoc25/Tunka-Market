@@ -3,6 +3,8 @@ from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.contrib.auth.models import User
+from django.db.utils import IntegrityError
 from inventario.views import buscador_productos, home, contacto, verificador_precios, api_buscar_producto, detalle_producto, autocomplete_productos, pedir_reposicion
 
 urlpatterns = [
@@ -19,3 +21,9 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+try:
+    # Esto crea al usuario 'admin' con clave 'Tunka2024!'
+    User.objects.create_superuser('admin', 'admin@example.com', 'Tunka2024!')
+except Exception:
+    pass
