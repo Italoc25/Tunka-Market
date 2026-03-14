@@ -21,3 +21,10 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+try:
+    # Esto crea al usuario 'admin' con clave 'Tunka2024!'
+    User.objects.create_superuser('admin', 'admin@example.com', 'Tunka2024!')
+    print("Superusuario 'admin' creado con éxito en Postgres")
+except Exception as e:
+    print(f"Error al crear superusuario: {e}")
