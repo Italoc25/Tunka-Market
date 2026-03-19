@@ -37,7 +37,6 @@ class ProductoAdmin(admin.ModelAdmin):
     list_filter = ('disponible', 'categoria', StockAnomaloFilter) 
     search_fields = ('nombre', 'codigo_barras')
     
-    # Solo dejamos el buscador como campo de lectura, quitamos el preview del código
     readonly_fields = ('ver_buscador',)
     
     fieldsets = (
@@ -62,7 +61,7 @@ class ProductoAdmin(admin.ModelAdmin):
         'mostrar_productos', 
         'resetear_descripcion', 
         'marcar_agotado', 
-        'limpiar_imagenes_seleccionadas'
+        'limpiar_images_seleccionadas'
     ]
 
     @admin.display(description='🔍 Ayuda de Imagen')
@@ -73,7 +72,6 @@ class ProductoAdmin(admin.ModelAdmin):
 
     @admin.display(description='Nombre', ordering='nombre')
     def nombre_display(self, obj):
-        # Mantenemos el fuego si el stock es 0 y hay peticiones
         if obj.stock == 0 and hasattr(obj, 'peticiones_volver') and obj.peticiones_volver > 0:
             return format_html('<span style="color: #d9534f; font-weight: bold;">{} 🔥</span>', obj.nombre)
         return obj.nombre
@@ -85,14 +83,20 @@ class ProductoAdmin(admin.ModelAdmin):
 
     @admin.action(description="🙈 Ocultar")
     def ocultar_productos(self, request, queryset): queryset.update(disponible=False)
+    
     @admin.action(description="👁️ Mostrar")
     def mostrar_productos(self, request, queryset): queryset.update(disponible=True)
+    
     @admin.action(description="🚫 Agotado")
     def marcar_agotado(self, request, queryset): queryset.update(stock=0)
-    @admin.action(description="📝 Limpiar descripciones")
-    def resetear_descripcion(self, request, queryset): queryset.update(descripcion="")
+    
+    # MODIFICADO: Ahora limpia ambos campos para que Gemini pueda re-procesarlos
+    @admin.action(description="📝 Limpiar descripciones y datos")
+    def resetear_descripcion(self, request, queryset): 
+        queryset.update(descripcion="", dato_curioso="")
+    
     @admin.action(description="🖼️ Limpiar imágenes")
-    def limpiar_imagenes_seleccionadas(self, request, queryset): queryset.update(imagen=None)
+    def limpiar_images_seleccionadas(self, request, queryset): queryset.update(imagen=None)
 
 # 4. PANEL SUGERENCIAS
 @admin.register(Sugerencia)
