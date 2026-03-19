@@ -10,7 +10,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # Configuración de Gemini con tu nueva API KEY
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        genai.configure(api_key=os.getenv("AIzaSyCN8BZRcGoWAK64IM5NHybyAGas3Q0vi2Y"))
         model = genai.GenerativeModel('models/gemini-1.5-flash')
         
         # Filtro general: entra cualquier producto con al menos un campo vacío
