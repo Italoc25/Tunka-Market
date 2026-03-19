@@ -1,15 +1,17 @@
 import os
 import time
+import google.generativeai as genai
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
-from openai import OpenAI
 
 class Command(BaseCommand):
-    help = 'Genera descripciones y datos curiosos usando IA (Universal con contador)'
+    help = 'Genera descripciones y datos curiosos usando Gemini (Google AI) con tus reglas'
 
     def handle(self, *args, **options):
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Configuración de Gemini con tu nueva API KEY
+        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         # Filtro general: entra cualquier producto con al menos un campo vacío
         productos_faltantes = Producto.objects.filter(
@@ -18,7 +20,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"Se encontraron {total} productos para trabajar.")
+        self.stdout.write(f"Se encontraron {total} productos para trabajar con Gemini.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -27,11 +29,13 @@ class Command(BaseCommand):
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Generando para: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
+            # MANTENEMOS TUS REGLAS EXACTAS
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
-            
+            Busca información REAL en internet si es necesario para ser preciso.
+
             PRODUCTO: {p.nombre}
             CATEGORÍA: {p.categoria.nombre if p.categoria else 'General'}
 
@@ -41,7 +45,7 @@ class Command(BaseCommand):
 
             REGLAS DE CONTENIDO (APLICAR SOLO A LO QUE ESTÉ 'VACÍO'):
             1. DESCRIPCIÓN (Máximo 25 palabras): 
-                Define el producto o su uso principal de forma sobria. 
+                Define el producto o su uso principal de forma sobria y real. 
                 - Si es un ingrediente, varía entre definir su origen, su función técnica o su perfil de sabor.
                 - No repitas marca, peso o formato que ya esté en el título.
 
@@ -55,7 +59,7 @@ class Command(BaseCommand):
             3. REGLA DE GASEOSAS: 
                 Si es una bebida y no especifica 'Zero/Sin Azúcar', menciona que es la fórmula clásica.
 
-            4. NO REPETIR: Si ya hay una descripción (manual o generada), no repitas esa info en el dato.
+            4. NO REPETIR: Si ya hay una descripción, no repitas esa info en el dato.
 
             IMPORTANTE: Si un campo NO está 'VACÍO', devuélvelo exactamente como está.
             Responde estrictamente en este formato:
@@ -64,26 +68,30 @@ class Command(BaseCommand):
             """
 
             try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}]
-                )
+                # Llamada a Gemini
+                response = model.generate_content(prompt)
+                texto = response.text
+                
+                # Procesamos la respuesta igual que antes
+                if "DATO:" in texto:
+                    partes = texto.split("DATO:")
+                    desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
+                    dato_ia = partes[1].strip()
+                    
+                    if not tiene_desc:
+                        p.descripcion = desc_ia
+                    if not tiene_dato:
+                        p.dato_curioso = dato_ia
+                    
+                    p.save()
+                    self.stdout.write(self.style.SUCCESS(f"✅ [{contador}/{total}] ¡Éxito con {p.nombre}!"))
+                else:
+                    self.stdout.write(self.style.ERROR(f"Formato incorrecto en {p.nombre}"))
 
-                texto = response.choices[0].message.content
-                partes = texto.split("DATO:")
-                desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                dato_ia = partes[1].strip()
-                
-                if not tiene_desc:
-                    p.descripcion = desc_ia
-                if not tiene_dato:
-                    p.dato_curioso = dato_ia
-                
-                p.save()
-                self.stdout.write(self.style.SUCCESS(f"[{contador}/{total}] ¡Éxito con {p.nombre}!"))
-                
-                # Pausa mínima para estabilidad de la API
-                time.sleep(0.3) 
+                # PAUSA OBLIGATORIA: El plan gratuito de Gemini permite 15 RPM.
+                # Con 4 segundos de pausa, hacemos 15 por minuto exactos.
+                time.sleep(4) 
 
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Error en {p.nombre}: {e}"))
+                self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
+                time.sleep(5) # Pausa extra si hay error para no saturar
