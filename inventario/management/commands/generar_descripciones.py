@@ -72,7 +72,6 @@ class Command(BaseCommand):
                 response = model.generate_content(prompt)
                 texto = response.text
                 
-                # Procesamos la respuesta igual que antes
                 if "DATO:" in texto:
                     partes = texto.split("DATO:")
                     desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
