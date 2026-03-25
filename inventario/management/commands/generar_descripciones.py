@@ -1,7 +1,6 @@
 import os
 import time
 import google.generativeai as genai
-from google.generativeai.types import RequestOptions # Requerido para forzar v1
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
@@ -18,7 +17,7 @@ class Command(BaseCommand):
 
         genai.configure(api_key=api_key)
         
-        # 2. Definición del modelo
+        # 2. Definición del modelo (Nombre limpio)
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         productos_faltantes = Producto.objects.filter(
@@ -37,7 +36,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL (SIN CAMBIOS) ---
+            # --- TU PROMPT ORIGINAL ---
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -74,12 +73,9 @@ class Command(BaseCommand):
             """
 
             try:
-                # 3. LLAMADA CON PARCHE: Forzamos api_version='v1'
-                # Esto soluciona el error 404 de "v1beta not found"
-                response = model.generate_content(
-                    prompt,
-                    request_options=RequestOptions(api_version='v1')
-                )
+                # 3. LLAMADA SIMPLE
+                # Al no poner 'models/', la librería 0.8.6 debería encontrarlo bien.
+                response = model.generate_content(prompt)
                 texto = response.text
                 
                 if "DATO:" in texto:
@@ -97,7 +93,6 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.ERROR(f"Formato incorrecto en {p.nombre}"))
 
-                # Pausa de seguridad
                 time.sleep(5) 
 
             except Exception as e:
