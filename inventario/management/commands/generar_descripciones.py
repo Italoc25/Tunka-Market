@@ -1,6 +1,7 @@
 import os
 import time
 import google.generativeai as genai
+from google.generativeai.types import RequestOptions # Requerido para forzar v1
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
@@ -9,7 +10,7 @@ class Command(BaseCommand):
     help = 'Genera descripciones y datos curiosos usando Gemini (Google AI) con tus reglas'
 
     def handle(self, *args, **options):
-        # 1. Configuración de Gemini leyendo la variable de Railway
+        # 1. Configuración de Gemini
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             self.stdout.write(self.style.ERROR("❌ No se encontró la variable GEMINI_API_KEY en Railway"))
@@ -17,10 +18,9 @@ class Command(BaseCommand):
 
         genai.configure(api_key=api_key)
         
-        # 2. Definición del modelo (intentamos el nombre estándar primero)
+        # 2. Definición del modelo
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Filtro: productos con al menos un campo vacío
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
@@ -37,7 +37,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL ---
+            # --- TU PROMPT ORIGINAL (SIN CAMBIOS) ---
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -74,8 +74,12 @@ class Command(BaseCommand):
             """
 
             try:
-                # 3. Llamada compatible (sin RequestOptions que daba error)
-                response = model.generate_content(prompt)
+                # 3. LLAMADA CON PARCHE: Forzamos api_version='v1'
+                # Esto soluciona el error 404 de "v1beta not found"
+                response = model.generate_content(
+                    prompt,
+                    request_options=RequestOptions(api_version='v1')
+                )
                 texto = response.text
                 
                 if "DATO:" in texto:
@@ -93,14 +97,9 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.ERROR(f"Formato incorrecto en {p.nombre}"))
 
-                # Pausa de 5 segundos para seguridad de cuota gratuita
+                # Pausa de seguridad
                 time.sleep(5) 
 
             except Exception as e:
-                # Manejo de error 404 (nombre de modelo) al vuelo
-                if "404" in str(e):
-                    self.stdout.write("Probando nombre alternativo del modelo...")
-                    model = genai.GenerativeModel('models/gemini-1.5-flash')
-                
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
                 time.sleep(10)
