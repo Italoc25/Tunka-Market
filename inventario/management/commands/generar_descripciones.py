@@ -1,6 +1,7 @@
 import os
 import time
 import google.generativeai as genai
+from google.generativeai.types import RequestOptions # Requerido para el parche
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
@@ -9,11 +10,13 @@ class Command(BaseCommand):
     help = 'Genera descripciones y datos curiosos usando Gemini (Google AI) con tus reglas'
 
     def handle(self, *args, **options):
-        # Configuración de Gemini con tu nueva API KEY
-        genai.configure(api_key=os.getenv("AIzaSyCN8BZRcGoWAK64IM5NHybyAGas3Q0vi2Y"))
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        # CORRECCIÓN 1: Leer la variable de entorno correctamente
+        api_key = os.getenv("GEMINI_API_KEY")
+        genai.configure(api_key=api_key)
         
-        # Filtro general: entra cualquier producto con al menos un campo vacío
+        # CORRECCIÓN 2: Usar el nombre del modelo sin prefijos
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
@@ -25,13 +28,11 @@ class Command(BaseCommand):
         contador = 0
         for p in productos_faltantes: 
             contador += 1
-            # Detectamos qué tenemos ya en la base de datos
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
             self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
-            # MANTENEMOS TUS REGLAS EXACTAS
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -68,8 +69,11 @@ class Command(BaseCommand):
             """
 
             try:
-                # Llamada a Gemini
-                response = model.generate_content(prompt)
+                # CORRECCIÓN 3: Forzar la versión v1 para evitar el error 404
+                response = model.generate_content(
+                    prompt,
+                    request_options=RequestOptions(api_version='v1')
+                )
                 texto = response.text
                 
                 if "DATO:" in texto:
@@ -87,10 +91,8 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.ERROR(f"Formato incorrecto en {p.nombre}"))
 
-                # PAUSA OBLIGATORIA: El plan gratuito de Gemini permite 15 RPM.
-                # Con 4 segundos de pausa, hacemos 15 por minuto exactos.
                 time.sleep(4) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
-                time.sleep(5) # Pausa extra si hay error para no saturar
+                time.sleep(10)
