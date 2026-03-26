@@ -6,16 +6,16 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Directa via API REST v1 con Prompt Original de Market Tunka'
+    help = 'Generación Directa v1 - Intento Definitivo Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
+            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Forzamos la URL a la versión 1 estable de Google
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+        # URL con el prefijo 'models/' incluido en la ruta, que es el estándar estricto de Google
+        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
         
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Iniciando conexión directa v1 para {total} productos.")
+        self.stdout.write(f"🚀 Iniciando conexión v1 (estricta) para {total} productos.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -76,7 +76,13 @@ class Command(BaseCommand):
             }
 
             try:
-                response = requests.post(url, json=payload, timeout=30)
+                # Pasamos la API Key como parámetro de consulta
+                response = requests.post(
+                    endpoint, 
+                    params={"key": api_key},
+                    json=payload, 
+                    timeout=30
+                )
                 data = response.json()
 
                 if response.status_code == 200:
@@ -91,13 +97,13 @@ class Command(BaseCommand):
                         if not tiene_dato: p.dato_curioso = dato_ia
                         
                         p.save()
-                        self.stdout.write(self.style.SUCCESS(f"✅ [{contador}/{total}] ¡Éxito con {p.nombre}!"))
+                        self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
                     else:
-                        self.stdout.write(self.style.ERROR(f"⚠️ Formato inesperado en {p.nombre}"))
+                        self.stdout.write(self.style.ERROR(f"⚠️ Formato inesperado"))
                 else:
-                    self.stdout.write(self.style.ERROR(f"❌ Error API ({response.status_code}): {data}"))
+                    # Si vuelve a dar 404, probaremos 'gemini-pro' en la URL
+                    self.stdout.write(self.style.ERROR(f"❌ Error API ({response.status_code}): {data.get('error', {}).get('message')}"))
                 
-                # Pausa de seguridad
                 time.sleep(5) 
 
             except Exception as e:
