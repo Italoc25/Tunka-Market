@@ -1,27 +1,22 @@
 import os
 import time
-import google.generativeai as genai
-# Eliminamos la importación de RequestOptions que fallaba
+from google import genai # <--- Librería nueva
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Genera descripciones y datos curiosos usando Gemini (Google AI) con tus reglas'
+    help = 'Genera descripciones usando la NUEVA librería de Google GenAI'
 
     def handle(self, *args, **options):
-        # 1. Configuración de Gemini
+        # 1. Configuración con la nueva librería
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            self.stdout.write(self.style.ERROR("❌ No se encontró la variable GEMINI_API_KEY en Railway"))
+            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
             return
 
-        genai.configure(api_key=api_key)
-        
-        # 2. EL TRUCO: Configuramos el modelo asegurando que NO use v1beta si falla
-        # Probamos con el nombre corto, que en versiones nuevas de la librería 
-        # apunta automáticamente a la v1.
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Creamos el cliente moderno
+        client = genai.Client(api_key=api_key)
         
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -29,7 +24,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"Se encontraron {total} productos para trabajar con Gemini.")
+        self.stdout.write(f"🚀 Usando nueva librería para {total} productos.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -37,7 +32,7 @@ class Command(BaseCommand):
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
             
             # --- TU PROMPT ORIGINAL ---
             prompt = f"""
@@ -76,8 +71,12 @@ class Command(BaseCommand):
             """
 
             try:
-                # 3. LLAMADA SIMPLE
-                response = model.generate_content(prompt)
+                # 3. LLAMADA CON LA NUEVA SINTAXIS
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash',
+                    contents=prompt
+                )
+                
                 texto = response.text
                 
                 if "DATO:" in texto:
@@ -85,23 +84,16 @@ class Command(BaseCommand):
                     desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
                     dato_ia = partes[1].strip()
                     
-                    if not tiene_desc:
-                        p.descripcion = desc_ia
-                    if not tiene_dato:
-                        p.dato_curioso = dato_ia
+                    if not tiene_desc: p.descripcion = desc_ia
+                    if not tiene_dato: p.dato_curioso = dato_ia
                     
                     p.save()
-                    self.stdout.write(self.style.SUCCESS(f"✅ [{contador}/{total}] ¡Éxito con {p.nombre}!"))
+                    self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
                 else:
-                    self.stdout.write(self.style.ERROR(f"Formato incorrecto en {p.nombre}"))
+                    self.stdout.write(self.style.ERROR(f"⚠️ Formato raro en {p.nombre}"))
 
                 time.sleep(5) 
 
             except Exception as e:
-                # Si falla el 404, intentamos con el nombre largo en el SIGUIENTE producto
-                if "404" in str(e):
-                    self.stdout.write("Error 404 detectado. Intentando re-configurar el modelo...")
-                    model = genai.GenerativeModel('models/gemini-1.5-flash')
-                
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
                 time.sleep(10)
