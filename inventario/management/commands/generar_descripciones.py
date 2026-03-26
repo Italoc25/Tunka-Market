@@ -1,22 +1,24 @@
 import os
 import time
-from google import genai # <--- Librería nueva
+from google import genai
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Genera descripciones usando la NUEVA librería de Google GenAI'
+    help = 'Genera descripciones usando la librería moderna, forzando v1 y con tu prompt original'
 
     def handle(self, *args, **options):
-        # 1. Configuración con la nueva librería
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
             return
 
-        # Creamos el cliente moderno
-        client = genai.Client(api_key=api_key)
+        # Forzamos v1 para intentar saltar el error 404 de la beta
+        client = genai.Client(
+            api_key=api_key,
+            http_options={'api_version': 'v1'}
+        )
         
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -24,7 +26,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Usando nueva librería para {total} productos.")
+        self.stdout.write(f"🚀 Iniciando proceso para {total} productos.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -32,9 +34,9 @@ class Command(BaseCommand):
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL ---
+            # --- TU PROMPT ORIGINAL RESTAURADO ---
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -71,7 +73,7 @@ class Command(BaseCommand):
             """
 
             try:
-                # 3. LLAMADA CON LA NUEVA SINTAXIS
+                # Llamada con la nueva librería
                 response = client.models.generate_content(
                     model='gemini-1.5-flash',
                     contents=prompt
@@ -92,8 +94,10 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.ERROR(f"⚠️ Formato raro en {p.nombre}"))
 
+                # Pausa de seguridad para la cuota gratuita
                 time.sleep(5) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
+                # Si sigue dando 404, el problema podría ser que el modelo se llama 'gemini-1.5-flash-latest'
                 time.sleep(10)
