@@ -1,12 +1,12 @@
 import os
 import time
-from google import genai
+import requests
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación de descripciones Market Tunka con API Key nueva'
+    help = 'Generación Directa via API REST v1 con Prompt Original de Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,30 +14,27 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
             return
 
-        # Configuramos el cliente con la librería moderna
-        client = genai.Client(api_key=api_key)
+        # Forzamos la URL a la versión 1 estable de Google
+        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
         
-        # Usamos el nombre estándar que Google pide para la v1
-        modelo_a_usar = 'gemini-1.5-flash'
-
-        productos = Producto.objects.filter(
+        productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
         )
 
-        total = productos.count()
-        self.stdout.write(f"🚀 Iniciando con {total} productos usando {modelo_a_usar}...")
+        total = productos_faltantes.count()
+        self.stdout.write(f"🚀 Iniciando conexión directa v1 para {total} productos.")
 
         contador = 0
-        for p in productos:
+        for p in productos_faltantes: 
             contador += 1
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL ---
-            prompt = f"""
+            # --- TU PROMPT ORIGINAL INTEGRO ---
+            prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
 
@@ -72,31 +69,37 @@ class Command(BaseCommand):
             DATO: (Texto aquí)
             """
 
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt_text}]
+                }]
+            }
+
             try:
-                # Llamada directa
-                response = client.models.generate_content(
-                    model=modelo_a_usar,
-                    contents=prompt
-                )
-                
-                if response.text and "DATO:" in response.text:
-                    partes = response.text.split("DATO:")
-                    desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                    # Limpiamos posibles asteriscos o formato markdown que a veces pone la IA
-                    dato_ia = partes[1].replace("**", "").strip()
+                response = requests.post(url, json=payload, timeout=30)
+                data = response.json()
+
+                if response.status_code == 200:
+                    texto_ia = data['candidates'][0]['content']['parts'][0]['text']
                     
-                    if not tiene_desc: p.descripcion = desc_ia
-                    if not tiene_dato: p.dato_curioso = dato_ia
-                    
-                    p.save()
-                    self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
+                    if "DATO:" in texto_ia:
+                        partes = texto_ia.split("DATO:")
+                        desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
+                        dato_ia = partes[1].replace("**", "").strip()
+                        
+                        if not tiene_desc: p.descripcion = desc_ia
+                        if not tiene_dato: p.dato_curioso = dato_ia
+                        
+                        p.save()
+                        self.stdout.write(self.style.SUCCESS(f"✅ [{contador}/{total}] ¡Éxito con {p.nombre}!"))
+                    else:
+                        self.stdout.write(self.style.ERROR(f"⚠️ Formato inesperado en {p.nombre}"))
                 else:
-                    self.stdout.write(self.style.ERROR(f"⚠️ Formato de respuesta no válido en {p.nombre}"))
+                    self.stdout.write(self.style.ERROR(f"❌ Error API ({response.status_code}): {data}"))
                 
-                # Pausa de 5 segundos para no agotar la cuota gratuita
+                # Pausa de seguridad
                 time.sleep(5) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
-                # Si hay error de cuota, esperamos un poco más
                 time.sleep(10)
