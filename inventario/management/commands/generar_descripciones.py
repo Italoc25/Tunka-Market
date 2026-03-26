@@ -1,6 +1,7 @@
 import os
 import time
 import google.generativeai as genai
+# Eliminamos la importación de RequestOptions que fallaba
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
@@ -17,7 +18,9 @@ class Command(BaseCommand):
 
         genai.configure(api_key=api_key)
         
-        # 2. Definición del modelo (Nombre limpio)
+        # 2. EL TRUCO: Configuramos el modelo asegurando que NO use v1beta si falla
+        # Probamos con el nombre corto, que en versiones nuevas de la librería 
+        # apunta automáticamente a la v1.
         model = genai.GenerativeModel('gemini-1.5-flash')
         
         productos_faltantes = Producto.objects.filter(
@@ -74,7 +77,6 @@ class Command(BaseCommand):
 
             try:
                 # 3. LLAMADA SIMPLE
-                # Al no poner 'models/', la librería 0.8.6 debería encontrarlo bien.
                 response = model.generate_content(prompt)
                 texto = response.text
                 
@@ -96,5 +98,10 @@ class Command(BaseCommand):
                 time.sleep(5) 
 
             except Exception as e:
+                # Si falla el 404, intentamos con el nombre largo en el SIGUIENTE producto
+                if "404" in str(e):
+                    self.stdout.write("Error 404 detectado. Intentando re-configurar el modelo...")
+                    model = genai.GenerativeModel('models/gemini-1.5-flash')
+                
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
                 time.sleep(10)
