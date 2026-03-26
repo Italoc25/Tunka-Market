@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Genera descripciones con el prompt original y auto-corrección de modelo'
+    help = 'Diagnóstico y generación de descripciones Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,28 +14,38 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Forzamos v1 para evitar errores de beta
-        client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
+        client = genai.Client(api_key=api_key)
         
-        # Lista de nombres técnicos que Google acepta para este modelo
-        nombres_modelo = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro']
-        modelo_actual = nombres_modelo[0]
+        # --- DIAGNÓSTICO: Ver qué modelos tienes realmente ---
+        self.stdout.write("🔍 Verificando modelos disponibles para tu llave...")
+        modelo_a_usar = None
+        try:
+            for m in client.models.list():
+                if 'generateContent' in m.supported_methods:
+                    self.stdout.write(f"✅ Modelo detectado: {m.name}")
+                    if not modelo_a_usar: # Agarramos el primero que sirva (preferencia flash)
+                        modelo_a_usar = m.name
+            
+            if not modelo_a_usar:
+                self.stdout.write(self.style.ERROR("❌ Tu API Key no tiene modelos de generación habilitados."))
+                return
+            
+            self.stdout.write(self.style.SUCCESS(f"🚀 Usando el modelo: {modelo_a_usar}"))
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ Error al listar modelos: {e}"))
+            return
 
-        productos_faltantes = Producto.objects.filter(
+        productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
         )
 
-        total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Iniciando proceso para {total} productos con {modelo_actual}...")
-
-        contador = 0
-        for p in productos_faltantes:
-            contador += 1
+        for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Buscando para: {p.nombre}...")
+            self.stdout.write(f"Procesando: {p.nombre}...")
             
             # --- TU PROMPT ORIGINAL INTEGRO ---
             prompt = f"""
@@ -73,38 +83,25 @@ class Command(BaseCommand):
             DATO: (Texto aquí)
             """
 
-            exito = False
-            indice_modelo = 0
-            
-            while not exito and indice_modelo < len(nombres_modelo):
-                try:
-                    response = client.models.generate_content(
-                        model=modelo_actual,
-                        contents=prompt
-                    )
+            try:
+                response = client.models.generate_content(
+                    model=modelo_a_usar,
+                    contents=prompt
+                )
+                
+                if response.text and "DATO:" in response.text:
+                    partes = response.text.split("DATO:")
+                    desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
+                    dato_ia = partes[1].strip()
                     
-                    texto = response.text
-                    if "DATO:" in texto:
-                        partes = texto.split("DATO:")
-                        desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                        dato_ia = partes[1].strip()
-                        
-                        if not tiene_desc: p.descripcion = desc_ia
-                        if not tiene_dato: p.dato_curioso = dato_ia
-                        
-                        p.save()
-                        self.stdout.write(self.style.SUCCESS(f"✅ Éxito con {p.nombre}"))
-                        exito = True
+                    if not tiene_desc: p.descripcion = desc_ia
+                    if not tiene_dato: p.dato_curioso = dato_ia
                     
-                    time.sleep(5)
+                    p.save()
+                    self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
+                
+                time.sleep(5) 
 
-                except Exception as e:
-                    # Si el error es 404 (modelo no encontrado), probamos el siguiente nombre de la lista
-                    if "404" in str(e) and indice_modelo < len(nombres_modelo) - 1:
-                        indice_modelo += 1
-                        modelo_old = modelo_actual
-                        modelo_actual = nombres_modelo[indice_modelo]
-                        self.stdout.write(f"⚠️ {modelo_old} falló (404), intentando con {modelo_actual}...")
-                    else:
-                        self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
-                        break # Salta al siguiente producto si ya probamos todo o es otro error
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
+                time.sleep(10)
