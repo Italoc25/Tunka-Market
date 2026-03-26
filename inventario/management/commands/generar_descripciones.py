@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Directa v1 - Cambio a Gemini Pro para Market Tunka'
+    help = 'Auto-Detección de Modelo y Generación - Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,8 +14,42 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # CAMBIO CLAVE: Usamos gemini-pro en lugar de gemini-1.5-flash
-        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+        # 1. PREGUNTARLE A GOOGLE QUÉ MODELOS EXISTEN
+        self.stdout.write("🔍 Consultando a Google qué modelos están disponibles para tu llave...")
+        url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        
+        modelo_a_usar = None
+        try:
+            resp = requests.get(url_list)
+            if resp.status_code == 200:
+                modelos = resp.json().get('models', [])
+                for m in modelos:
+                    # Buscamos uno que permita generar texto
+                    if 'generateContent' in m.get('supportedGenerationMethods', []):
+                        nombre = m.get('name') # Ej: "models/gemini-1.5-flash"
+                        # Si tiene la palabra flash, lo priorizamos
+                        if 'flash' in nombre.lower():
+                            modelo_a_usar = nombre
+                            break
+                        # Si no, guardamos el primero que aparezca
+                        if not modelo_a_usar:
+                            modelo_a_usar = nombre
+            else:
+                self.stdout.write(self.style.ERROR(f"❌ Error al consultar modelos: {resp.json()}"))
+                return
+            
+            if not modelo_a_usar:
+                self.stdout.write(self.style.ERROR("❌ Tu API Key no tiene modelos de texto habilitados."))
+                return
+            
+            self.stdout.write(self.style.SUCCESS(f"✅ ¡Modelo detectado! Usaremos la URL exacta: {modelo_a_usar}"))
+            
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ Error de conexión: {e}"))
+            return
+
+        # 2. CONSTRUIR LA URL CON EL MODELO EXACTO QUE GOOGLE NOS DIO
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_a_usar}:generateContent"
         
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -23,7 +57,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Intentando con GEMINI-PRO para {total} productos.")
+        self.stdout.write(f"🚀 Iniciando procesamiento para {total} productos.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -33,7 +67,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL ---
+            # --- TU PROMPT ORIGINAL INTEGRO ---
             prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -102,8 +136,7 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(self.style.ERROR(f"❌ Error API ({response.status_code}): {data.get('error', {}).get('message')}"))
                 
-                # Gemini Pro a veces tiene límites más estrictos, subimos a 6 segundos
-                time.sleep(6) 
+                time.sleep(5) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
