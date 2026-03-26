@@ -6,48 +6,37 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Diagnóstico y generación de descripciones Market Tunka'
+    help = 'Generación de descripciones Market Tunka con API Key nueva'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
+            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
             return
 
+        # Configuramos el cliente con la librería moderna
         client = genai.Client(api_key=api_key)
         
-        # --- DIAGNÓSTICO: Ver qué modelos tienes realmente ---
-        self.stdout.write("🔍 Verificando modelos disponibles para tu llave...")
-        modelo_a_usar = None
-        try:
-            for m in client.models.list():
-                if 'generateContent' in m.supported_methods:
-                    self.stdout.write(f"✅ Modelo detectado: {m.name}")
-                    if not modelo_a_usar: # Agarramos el primero que sirva (preferencia flash)
-                        modelo_a_usar = m.name
-            
-            if not modelo_a_usar:
-                self.stdout.write(self.style.ERROR("❌ Tu API Key no tiene modelos de generación habilitados."))
-                return
-            
-            self.stdout.write(self.style.SUCCESS(f"🚀 Usando el modelo: {modelo_a_usar}"))
-            
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"❌ Error al listar modelos: {e}"))
-            return
+        # Usamos el nombre estándar que Google pide para la v1
+        modelo_a_usar = 'gemini-1.5-flash'
 
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
         )
 
+        total = productos.count()
+        self.stdout.write(f"🚀 Iniciando con {total} productos usando {modelo_a_usar}...")
+
+        contador = 0
         for p in productos:
+            contador += 1
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"Procesando: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL INTEGRO ---
+            # --- TU PROMPT ORIGINAL ---
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -84,6 +73,7 @@ class Command(BaseCommand):
             """
 
             try:
+                # Llamada directa
                 response = client.models.generate_content(
                     model=modelo_a_usar,
                     contents=prompt
@@ -92,16 +82,21 @@ class Command(BaseCommand):
                 if response.text and "DATO:" in response.text:
                     partes = response.text.split("DATO:")
                     desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                    dato_ia = partes[1].strip()
+                    # Limpiamos posibles asteriscos o formato markdown que a veces pone la IA
+                    dato_ia = partes[1].replace("**", "").strip()
                     
                     if not tiene_desc: p.descripcion = desc_ia
                     if not tiene_dato: p.dato_curioso = dato_ia
                     
                     p.save()
                     self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
+                else:
+                    self.stdout.write(self.style.ERROR(f"⚠️ Formato de respuesta no válido en {p.nombre}"))
                 
+                # Pausa de 5 segundos para no agotar la cuota gratuita
                 time.sleep(5) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
+                # Si hay error de cuota, esperamos un poco más
                 time.sleep(10)
