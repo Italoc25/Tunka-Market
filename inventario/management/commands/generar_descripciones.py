@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Estable Market Tunka - Prompt Original Completo'
+    help = 'Generación Estable Market Tunka - Modo Tortuga para Cuota Gratuita'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,30 +14,17 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # 1. DETECCIÓN AUTOMÁTICA DEL MODELO (v1beta para Gemini 2.5)
-        url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        modelo_a_usar = "models/gemini-2.5-flash" # Valor por defecto
-        try:
-            resp = requests.get(url_list)
-            modelos = resp.json().get('models', [])
-            for m in modelos:
-                nombre = m.get('name')
-                if 'flash' in nombre.lower() and 'generateContent' in m.get('supportedGenerationMethods', []):
-                    modelo_a_usar = nombre
-                    break
-        except:
-            pass
-
+        # Ya sabemos que tu modelo es gemini-2.5-flash
+        modelo_a_usar = "models/gemini-2.5-flash"
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_a_usar}:generateContent"
         
-        # Filtramos solo lo que falta por llenar
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
         )
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🚀 Retomando con {modelo_a_usar}. Quedan {total} productos."))
+        self.stdout.write(self.style.SUCCESS(f"🐢 Modo Tortuga con {modelo_a_usar}. Quedan {total} productos."))
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -45,7 +32,6 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Procesando: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL INTEGRO (RESTAURADO) ---
             prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -104,18 +90,18 @@ class Command(BaseCommand):
                             p.save()
                             self.stdout.write(self.style.SUCCESS(f"✅ Éxito con {p.nombre}"))
                             reintentar = False
-                    elif response.status_code == 503:
-                        self.stdout.write("⏳ Google ocupado, esperando 15 segundos...")
-                        time.sleep(15)
                     elif response.status_code == 429:
-                        self.stdout.write("⏳ Límite de cuota alcanzado, esperando 30 segundos...")
+                        self.stdout.write("⏳ Cuota agotada. Esperando 60 segundos para liberar...")
+                        time.sleep(60)
+                    elif response.status_code == 503:
+                        self.stdout.write("⏳ Google saturado. Esperando 30 segundos...")
                         time.sleep(30)
                     else:
-                        self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}. Saltando..."))
+                        self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code} en {p.nombre}. Saltando..."))
                         reintentar = False
                 except Exception as e:
                     self.stdout.write(f"❌ Error técnico: {e}")
                     reintentar = False
 
-            # Pausa constante de 8 segundos para evitar bloqueos
-            time.sleep(8)
+            # Pausa de 25 segundos SIEMPRE entre productos exitosos
+            time.sleep(25)
