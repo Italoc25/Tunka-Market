@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Directa v1 - Intento Definitivo Market Tunka'
+    help = 'Generación Directa v1 - Cambio a Gemini Pro para Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,8 +14,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # URL con el prefijo 'models/' incluido en la ruta, que es el estándar estricto de Google
-        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+        # CAMBIO CLAVE: Usamos gemini-pro en lugar de gemini-1.5-flash
+        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
         
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Iniciando conexión v1 (estricta) para {total} productos.")
+        self.stdout.write(f"🚀 Intentando con GEMINI-PRO para {total} productos.")
 
         contador = 0
         for p in productos_faltantes: 
@@ -31,9 +31,9 @@ class Command(BaseCommand):
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Procesando: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL INTEGRO ---
+            # --- TU PROMPT ORIGINAL ---
             prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -76,7 +76,6 @@ class Command(BaseCommand):
             }
 
             try:
-                # Pasamos la API Key como parámetro de consulta
                 response = requests.post(
                     endpoint, 
                     params={"key": api_key},
@@ -101,10 +100,10 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(self.style.ERROR(f"⚠️ Formato inesperado"))
                 else:
-                    # Si vuelve a dar 404, probaremos 'gemini-pro' en la URL
                     self.stdout.write(self.style.ERROR(f"❌ Error API ({response.status_code}): {data.get('error', {}).get('message')}"))
                 
-                time.sleep(5) 
+                # Gemini Pro a veces tiene límites más estrictos, subimos a 6 segundos
+                time.sleep(6) 
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
