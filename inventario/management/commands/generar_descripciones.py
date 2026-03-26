@@ -6,37 +6,38 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Genera descripciones usando la librería moderna, forzando v1 y con tu prompt original'
+    help = 'Genera descripciones con el prompt original y auto-corrección de modelo'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY en Railway"))
+            self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Forzamos v1 para intentar saltar el error 404 de la beta
-        client = genai.Client(
-            api_key=api_key,
-            http_options={'api_version': 'v1'}
-        )
+        # Forzamos v1 para evitar errores de beta
+        client = genai.Client(api_key=api_key, http_options={'api_version': 'v1'})
         
+        # Lista de nombres técnicos que Google acepta para este modelo
+        nombres_modelo = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro']
+        modelo_actual = nombres_modelo[0]
+
         productos_faltantes = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
         )
 
         total = productos_faltantes.count()
-        self.stdout.write(f"🚀 Iniciando proceso para {total} productos.")
+        self.stdout.write(f"🚀 Iniciando proceso para {total} productos con {modelo_actual}...")
 
         contador = 0
-        for p in productos_faltantes: 
+        for p in productos_faltantes:
             contador += 1
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
             tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
 
-            self.stdout.write(f"[{contador}/{total}] Buscando info real para: {p.nombre}...")
+            self.stdout.write(f"[{contador}/{total}] Buscando para: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL RESTAURADO ---
+            # --- TU PROMPT ORIGINAL INTEGRO ---
             prompt = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -72,32 +73,38 @@ class Command(BaseCommand):
             DATO: (Texto aquí)
             """
 
-            try:
-                # Llamada con la nueva librería
-                response = client.models.generate_content(
-                    model='gemini-1.5-flash',
-                    contents=prompt
-                )
-                
-                texto = response.text
-                
-                if "DATO:" in texto:
-                    partes = texto.split("DATO:")
-                    desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                    dato_ia = partes[1].strip()
+            exito = False
+            indice_modelo = 0
+            
+            while not exito and indice_modelo < len(nombres_modelo):
+                try:
+                    response = client.models.generate_content(
+                        model=modelo_actual,
+                        contents=prompt
+                    )
                     
-                    if not tiene_desc: p.descripcion = desc_ia
-                    if not tiene_dato: p.dato_curioso = dato_ia
+                    texto = response.text
+                    if "DATO:" in texto:
+                        partes = texto.split("DATO:")
+                        desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
+                        dato_ia = partes[1].strip()
+                        
+                        if not tiene_desc: p.descripcion = desc_ia
+                        if not tiene_dato: p.dato_curioso = dato_ia
+                        
+                        p.save()
+                        self.stdout.write(self.style.SUCCESS(f"✅ Éxito con {p.nombre}"))
+                        exito = True
                     
-                    p.save()
-                    self.stdout.write(self.style.SUCCESS(f"✅ ¡Éxito con {p.nombre}!"))
-                else:
-                    self.stdout.write(self.style.ERROR(f"⚠️ Formato raro en {p.nombre}"))
+                    time.sleep(5)
 
-                # Pausa de seguridad para la cuota gratuita
-                time.sleep(5) 
-
-            except Exception as e:
-                self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
-                # Si sigue dando 404, el problema podría ser que el modelo se llama 'gemini-1.5-flash-latest'
-                time.sleep(10)
+                except Exception as e:
+                    # Si el error es 404 (modelo no encontrado), probamos el siguiente nombre de la lista
+                    if "404" in str(e) and indice_modelo < len(nombres_modelo) - 1:
+                        indice_modelo += 1
+                        modelo_old = modelo_actual
+                        modelo_actual = nombres_modelo[indice_modelo]
+                        self.stdout.write(f"⚠️ {modelo_old} falló (404), intentando con {modelo_actual}...")
+                    else:
+                        self.stdout.write(self.style.ERROR(f"❌ Error en {p.nombre}: {e}"))
+                        break # Salta al siguiente producto si ya probamos todo o es otro error
