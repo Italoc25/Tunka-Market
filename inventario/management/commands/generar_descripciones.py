@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Estable Market Tunka - Modo Tortuga para Cuota Gratuita'
+    help = 'Generación Alta Velocidad Market Tunka - Cuenta de Pago'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,8 +14,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Ya sabemos que tu modelo es gemini-2.5-flash
-        modelo_a_usar = "models/gemini-2.5-flash"
+        # Usamos 1.5-flash: es el más estable y rápido para cuentas con facturación
+        modelo_a_usar = "models/gemini-1.5-flash"
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_a_usar}:generateContent"
         
         productos = Producto.objects.filter(
@@ -24,7 +24,7 @@ class Command(BaseCommand):
         )
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🐢 Modo Tortuga con {modelo_a_usar}. Quedan {total} productos."))
+        self.stdout.write(self.style.SUCCESS(f"🚀 MODO VELOZ: {total} productos restantes."))
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -32,6 +32,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Procesando: {p.nombre}...")
             
+            # --- TU PROMPT ORIGINAL INTEGRO ---
             prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -67,41 +68,37 @@ class Command(BaseCommand):
             DATO: (Texto aquí)
             """
 
-            reintentar = True
-            while reintentar:
-                try:
-                    response = requests.post(
-                        endpoint, 
-                        params={"key": api_key}, 
-                        json={"contents": [{"parts": [{"text": prompt_text}]}]}, 
-                        timeout=30
-                    )
+            try:
+                response = requests.post(
+                    endpoint, 
+                    params={"key": api_key}, 
+                    json={"contents": [{"parts": [{"text": prompt_text}]}]}, 
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    texto_ia = data['candidates'][0]['content']['parts'][0]['text']
                     
-                    if response.status_code == 200:
-                        texto_ia = response.json()['candidates'][0]['content']['parts'][0]['text']
-                        if "DATO:" in texto_ia:
-                            partes = texto_ia.split("DATO:")
-                            desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                            dato_ia = partes[1].replace("**", "").strip()
-                            
-                            if not tiene_desc: p.descripcion = desc_ia
-                            if not tiene_dato: p.dato_curioso = dato_ia
-                            
-                            p.save()
-                            self.stdout.write(self.style.SUCCESS(f"✅ Éxito con {p.nombre}"))
-                            reintentar = False
-                    elif response.status_code == 429:
-                        self.stdout.write("⏳ Cuota agotada. Esperando 60 segundos para liberar...")
-                        time.sleep(60)
-                    elif response.status_code == 503:
-                        self.stdout.write("⏳ Google saturado. Esperando 30 segundos...")
-                        time.sleep(30)
-                    else:
-                        self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code} en {p.nombre}. Saltando..."))
-                        reintentar = False
-                except Exception as e:
-                    self.stdout.write(f"❌ Error técnico: {e}")
-                    reintentar = False
+                    if "DATO:" in texto_ia:
+                        partes = texto_ia.split("DATO:")
+                        desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
+                        dato_ia = partes[1].replace("**", "").strip()
+                        
+                        if not tiene_desc: p.descripcion = desc_ia
+                        if not tiene_dato: p.dato_curioso = dato_ia
+                        
+                        p.save()
+                        self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
+                    
+                elif response.status_code == 429:
+                    self.stdout.write("⏳ Cuota lenta (Facturación cerrada?). Esperando 20s...")
+                    time.sleep(20)
+                else:
+                    self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}"))
 
-            # Pausa de 25 segundos SIEMPRE entre productos exitosos
-            time.sleep(25)
+            except Exception as e:
+                self.stdout.write(f"❌ Error: {e}")
+
+            # Con cuenta abierta, 2 segundos es suficiente
+            time.sleep(2)
