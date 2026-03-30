@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Alta Velocidad Market Tunka - Cuenta de Pago'
+    help = 'Generación Alta Velocidad Market Tunka - Producción v1'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,9 +14,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Usamos 1.5-flash: es el más estable y rápido para cuentas con facturación
-        modelo_a_usar = "models/gemini-1.5-flash"
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_a_usar}:generateContent"
+        # URL ESTÁNDAR PARA GOOGLE CLOUD / CUENTAS DE PAGO (Versión v1)
+        # Cambiamos v1beta por v1 para máxima estabilidad
+        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
         
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -24,7 +24,7 @@ class Command(BaseCommand):
         )
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🚀 MODO VELOZ: {total} productos restantes."))
+        self.stdout.write(self.style.SUCCESS(f"🚀 MODO PRODUCCIÓN: {total} productos con gemini-1.5-flash."))
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -69,6 +69,7 @@ class Command(BaseCommand):
             """
 
             try:
+                # Enviamos la API Key como parámetro 'key'
                 response = requests.post(
                     endpoint, 
                     params={"key": api_key}, 
@@ -90,15 +91,12 @@ class Command(BaseCommand):
                         
                         p.save()
                         self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
-                    
-                elif response.status_code == 429:
-                    self.stdout.write("⏳ Cuota lenta (Facturación cerrada?). Esperando 20s...")
-                    time.sleep(20)
                 else:
-                    self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}"))
+                    # Imprimimos el error completo de Google para saber qué pasa
+                    self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}: {response.text}"))
 
             except Exception as e:
-                self.stdout.write(f"❌ Error: {e}")
+                self.stdout.write(f"❌ Error técnico: {e}")
 
-            # Con cuenta abierta, 2 segundos es suficiente
+            # Con cuenta de pago, 2 segundos es súper seguro y rápido
             time.sleep(2)
