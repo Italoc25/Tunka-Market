@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Alta Velocidad Market Tunka - Producción v1'
+    help = 'Generación Producción Final Market Tunka'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,17 +14,16 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # URL ESTÁNDAR PARA GOOGLE CLOUD / CUENTAS DE PAGO (Versión v1)
-        # Cambiamos v1beta por v1 para máxima estabilidad
+        # URL ESTRICTA DE GOOGLE V1 (Incluyendo el prefijo models/ en la ruta)
         endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
         
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
             Q(dato_curioso__isnull=True) | Q(dato_curioso="")
-        )
+        ).order_by('id')
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🚀 MODO PRODUCCIÓN: {total} productos con gemini-1.5-flash."))
+        self.stdout.write(self.style.SUCCESS(f"🚀 MODO PRODUCCIÓN: Procesando {total} productos."))
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -69,11 +68,13 @@ class Command(BaseCommand):
             """
 
             try:
-                # Enviamos la API Key como parámetro 'key'
+                # Enviamos el payload correcto
+                payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
+                
                 response = requests.post(
                     endpoint, 
                     params={"key": api_key}, 
-                    json={"contents": [{"parts": [{"text": prompt_text}]}]}, 
+                    json=payload, 
                     timeout=30
                 )
                 
@@ -92,11 +93,10 @@ class Command(BaseCommand):
                         p.save()
                         self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
                 else:
-                    # Imprimimos el error completo de Google para saber qué pasa
                     self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}: {response.text}"))
 
             except Exception as e:
-                self.stdout.write(f"❌ Error técnico: {e}")
+                self.stdout.write(self.style.ERROR(f"❌ Error técnico: {e}"))
 
-            # Con cuenta de pago, 2 segundos es súper seguro y rápido
+            # Pausa de 2 segundos (Velocidad de pago)
             time.sleep(2)
