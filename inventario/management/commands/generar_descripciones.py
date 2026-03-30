@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Producción Final Market Tunka'
+    help = 'Generación Market Tunka - v1beta con Facturación'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,8 +14,9 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # URL ESTRICTA DE GOOGLE V1 (Incluyendo el prefijo models/ en la ruta)
-        endpoint = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+        # Regresamos a v1beta porque v1 no está reconociendo el nombre del modelo en tu proyecto
+        # Pero ahora con tu cuenta de pago debería volar sin errores 429
+        endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
         
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -23,7 +24,7 @@ class Command(BaseCommand):
         ).order_by('id')
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🚀 MODO PRODUCCIÓN: Procesando {total} productos."))
+        self.stdout.write(self.style.SUCCESS(f"🚀 Iniciando proceso para {total} productos con v1beta + Pago."))
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -68,13 +69,10 @@ class Command(BaseCommand):
             """
 
             try:
-                # Enviamos el payload correcto
-                payload = {"contents": [{"parts": [{"text": prompt_text}]}]}
-                
                 response = requests.post(
                     endpoint, 
                     params={"key": api_key}, 
-                    json=payload, 
+                    json={"contents": [{"parts": [{"text": prompt_text}]}]}, 
                     timeout=30
                 )
                 
@@ -92,11 +90,14 @@ class Command(BaseCommand):
                         
                         p.save()
                         self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
+                elif response.status_code == 429:
+                    self.stdout.write("⏳ Cuota alcanzada. Esperando 10s (Revisa si el pago impactó)...")
+                    time.sleep(10)
                 else:
                     self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}: {response.text}"))
 
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error técnico: {e}"))
 
-            # Pausa de 2 segundos (Velocidad de pago)
+            # Pausa de 2 segundos para ir rápido pero seguro
             time.sleep(2)
