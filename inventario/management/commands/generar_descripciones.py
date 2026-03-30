@@ -6,7 +6,7 @@ from django.db.models import Q
 from inventario.models import Producto
 
 class Command(BaseCommand):
-    help = 'Generación Market Tunka - v1beta con Facturación'
+    help = 'Generación Market Tunka - Detección Dinámica de Modelo'
 
     def handle(self, *args, **options):
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -14,9 +14,33 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # Regresamos a v1beta porque v1 no está reconociendo el nombre del modelo en tu proyecto
-        # Pero ahora con tu cuenta de pago debería volar sin errores 429
-        endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        # 1. PREGUNTARLE A GOOGLE QUÉ MODELO TIENES TÚ
+        self.stdout.write("🔍 Buscando el modelo activo en tu cuenta...")
+        url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        modelo_detectado = None
+        
+        try:
+            resp = requests.get(url_list)
+            if resp.status_code == 200:
+                modelos = resp.json().get('models', [])
+                for m in modelos:
+                    nombre = m.get('name')
+                    # Priorizamos el que sea 'flash' y permita generar contenido
+                    if 'flash' in nombre.lower() and 'generateContent' in m.get('supportedGenerationMethods', []):
+                        modelo_detectado = nombre
+                        break
+            
+            if not modelo_detectado:
+                self.stdout.write(self.style.ERROR("❌ No se encontró un modelo compatible en tu cuenta."))
+                return
+                
+            self.stdout.write(self.style.SUCCESS(f"✅ Usando modelo: {modelo_detectado}"))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ Error al detectar modelo: {e}"))
+            return
+
+        # URL dinámica basada en lo que Google nos dijo
+        endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_detectado}:generateContent"
         
         productos = Producto.objects.filter(
             Q(descripcion__isnull=True) | Q(descripcion="") |
@@ -24,7 +48,7 @@ class Command(BaseCommand):
         ).order_by('id')
 
         total = productos.count()
-        self.stdout.write(self.style.SUCCESS(f"🚀 Iniciando proceso para {total} productos con v1beta + Pago."))
+        self.stdout.write(f"🚀 Iniciando proceso para {total} productos.")
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -91,7 +115,7 @@ class Command(BaseCommand):
                         p.save()
                         self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
                 elif response.status_code == 429:
-                    self.stdout.write("⏳ Cuota alcanzada. Esperando 10s (Revisa si el pago impactó)...")
+                    self.stdout.write("⏳ Cuota alcanzada. Esperando 10 segundos...")
                     time.sleep(10)
                 else:
                     self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}: {response.text}"))
@@ -99,5 +123,5 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"❌ Error técnico: {e}"))
 
-            # Pausa de 2 segundos para ir rápido pero seguro
+            # Velocidad con cuenta activa
             time.sleep(2)
