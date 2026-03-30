@@ -4,20 +4,28 @@ import requests
 from django.core.management.base import BaseCommand
 from django.db.models import Q
 from inventario.models import Producto
+from django.contrib.auth.models import User
 
 class Command(BaseCommand):
-    help = 'Generación Market Tunka - Detección Dinámica de Modelo'
+    help = 'Generación Market Tunka - IA Completa + Acceso Superusuario'
 
     def handle(self, *args, **options):
+        # --- BLOQUE DE EMERGENCIA PARA ENTRAR AL ADMIN ---
+        if not User.objects.filter(username="jefe_tunka").exists():
+            User.objects.create_superuser("jefe_tunka", "admin@tunka.com", "Tunka2026!")
+            self.stdout.write(self.style.SUCCESS("✅ NUEVO ACCESO CREADO: Usuario 'jefe_tunka' / Clave 'Tunka2026!'"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️ El usuario 'jefe_tunka' ya existe."))
+        # -----------------------------------------------
+
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
             return
 
-        # 1. PREGUNTARLE A GOOGLE QUÉ MODELO TIENES TÚ
-        self.stdout.write("🔍 Buscando el modelo activo en tu cuenta...")
+        # Detección dinámica del modelo activo
         url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        modelo_detectado = None
+        modelo_detectado = "models/gemini-1.5-flash" 
         
         try:
             resp = requests.get(url_list)
@@ -25,21 +33,13 @@ class Command(BaseCommand):
                 modelos = resp.json().get('models', [])
                 for m in modelos:
                     nombre = m.get('name')
-                    # Priorizamos el que sea 'flash' y permita generar contenido
                     if 'flash' in nombre.lower() and 'generateContent' in m.get('supportedGenerationMethods', []):
                         modelo_detectado = nombre
                         break
-            
-            if not modelo_detectado:
-                self.stdout.write(self.style.ERROR("❌ No se encontró un modelo compatible en tu cuenta."))
-                return
-                
             self.stdout.write(self.style.SUCCESS(f"✅ Usando modelo: {modelo_detectado}"))
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"❌ Error al detectar modelo: {e}"))
-            return
+        except:
+            self.stdout.write("⚠️ Usando modelo por defecto.")
 
-        # URL dinámica basada en lo que Google nos dijo
         endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_detectado}:generateContent"
         
         productos = Producto.objects.filter(
@@ -48,7 +48,7 @@ class Command(BaseCommand):
         ).order_by('id')
 
         total = productos.count()
-        self.stdout.write(f"🚀 Iniciando proceso para {total} productos.")
+        self.stdout.write(f"🚀 Procesando {total} productos.")
 
         for p in productos:
             tiene_desc = bool(p.descripcion and p.descripcion.strip())
@@ -56,7 +56,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Procesando: {p.nombre}...")
             
-            # --- TU PROMPT ORIGINAL INTEGRO ---
+            # --- TU PROMPT ORIGINAL COMPLETO ---
             prompt_text = f"""
             Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
             Busca información REAL en internet si es necesario para ser preciso.
@@ -106,22 +106,22 @@ class Command(BaseCommand):
                     
                     if "DATO:" in texto_ia:
                         partes = texto_ia.split("DATO:")
-                        desc_ia = partes[0].replace("DESCRIPCION:", "").strip()
-                        dato_ia = partes[1].replace("**", "").strip()
+                        desc_limpia = partes[0].replace("DESCRIPCION:", "").strip()
+                        dato_limpio = partes[1].replace("**", "").strip()
                         
-                        if not tiene_desc: p.descripcion = desc_ia
-                        if not tiene_dato: p.dato_curioso = dato_ia
+                        if not tiene_desc: p.descripcion = desc_limpia
+                        if not tiene_dato: p.dato_curioso = dato_limpio
                         
                         p.save()
                         self.stdout.write(self.style.SUCCESS(f"✅ OK: {p.nombre}"))
                 elif response.status_code == 429:
-                    self.stdout.write("⏳ Cuota alcanzada. Esperando 10 segundos...")
-                    time.sleep(10)
+                    self.stdout.write("⏳ Cuota alcanzada. Esperando 15s...")
+                    time.sleep(15)
                 else:
-                    self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}: {response.text}"))
+                    self.stdout.write(self.style.ERROR(f"❌ Error {response.status_code}"))
 
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"❌ Error técnico: {e}"))
+                self.stdout.write(f"❌ Error técnico: {e}")
 
-            # Velocidad con cuenta activa
+            # Espera de 2 segundos para aprovechar la cuenta de pago
             time.sleep(2)
