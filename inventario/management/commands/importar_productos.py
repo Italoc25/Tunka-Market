@@ -14,30 +14,20 @@ class Command(BaseCommand):
         """Convierte precios y stock eliminando decimales sobrantes."""
         if valor is None or str(valor).strip() == "":
             return 0
-        
         try:
-            # 1. Lo pasamos a string y limpiamos símbolos de moneda o espacios
             limpio = (str(valor)
                       .replace('$', '')
                       .replace('"', '').replace('“', '').replace('”', '')
                       .strip())
-            
-            # 2. Manejo de Comas y Puntos (El truco para el 20,00)
-            # Si hay una coma, asumimos que lo que sigue son decimales y lo cortamos.
             if ',' in limpio:
                 limpio = limpio.split(',')[0]
-            
-            # 3. Quitar puntos de miles (si los hubiera)
-            # Solo quitamos el punto si NO es un decimal (ej: 1.000 -> 1000)
             limpio = limpio.replace('.', '')
-
-            # 4. Convertimos a float primero por si acaso y luego a int
             return int(float(limpio))
-            
         except (ValueError, TypeError):
             return 0
 
-def handle(self, *args, **options):
+    # IMPORTANTE: Esta función DEBE estar indentada (con espacios a la derecha)
+    def handle(self, *args, **options):
         ruta = options['archivo_excel']
         
         if not os.path.exists(ruta):
@@ -47,14 +37,13 @@ def handle(self, *args, **options):
         try:
             workbook = openpyxl.load_workbook(ruta, data_only=True)
             sheet = workbook.active
-            self.stdout.write(self.style.SUCCESS(f'🚀 Iniciando importación: Protegiendo Nombres y Categorías del Admin'))
+            self.stdout.write(self.style.SUCCESS(f'🚀 Iniciando importación: Protegiendo Nombres y Categorías'))
 
             with transaction.atomic():
                 for row in sheet.iter_rows(min_row=2, values_only=True):
                     codigo_raw = row[0]
                     if codigo_raw is None: continue
                     
-                    # Datos del Excel
                     codigo_ext  = str(codigo_raw).split('.')[0].strip()
                     nombre_ext  = str(row[1]).strip() if row[1] else "Sin Nombre"
                     precio_ext  = self.limpiar_numero(row[3])
@@ -62,12 +51,10 @@ def handle(self, *args, **options):
                     stk_min_ext = self.limpiar_numero(row[6])
                     depto_ext   = str(row[8]).strip() if row[8] else "General"
 
-                    # BUSCAR SI YA EXISTE
                     producto = Producto.objects.filter(codigo_barras=codigo_ext).first()
 
                     if producto:
-                        # --- PRODUCTO EXISTENTE: SOLO ACTUALIZAMOS VALORES NUMÉRICOS ---
-                        # El Nombre y la Categoría se quedan tal cual están en el Admin.
+                        # EXISTENTE: Solo actualizamos números
                         producto.precio = precio_ext
                         producto.stock = stock_ext
                         producto.stock_minimo = stk_min_ext
@@ -75,7 +62,7 @@ def handle(self, *args, **options):
                         self.stdout.write(f'✅ Actualizado (Precio/Stock): {producto.nombre}')
                     
                     else:
-                        # --- PRODUCTO NUEVO: USAMOS LOS DATOS DEL EXCEL ---
+                        # NUEVO: Usamos datos del Excel
                         categoria_obj, _ = Categoria.objects.get_or_create(nombre=depto_ext)
                         
                         Producto.objects.create(
@@ -89,7 +76,7 @@ def handle(self, *args, **options):
                         )
                         self.stdout.write(self.style.SUCCESS(f'➕ Añadido nuevo: {nombre_ext}'))
 
-            self.stdout.write(self.style.SUCCESS('--- Proceso terminado: Todo al día ---'))
+            self.stdout.write(self.style.SUCCESS('--- Proceso terminado con éxito ---'))
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Error fatal: {str(e)}'))
