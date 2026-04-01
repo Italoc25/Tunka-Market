@@ -3,6 +3,12 @@ from django.db import models
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
 
+    class Meta:
+        # Esto ordena alfabéticamente en TODO el sitio (Admin, filtros, web)
+        ordering = ['nombre']
+        verbose_name = "Categoría"
+        verbose_name_plural = "Categorías"
+
     def __str__(self):
         return self.nombre
 
@@ -19,6 +25,12 @@ class Producto(models.Model):
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     disponible = models.BooleanField(default=True, verbose_name="Visible en la web")
     peticiones_volver = models.PositiveIntegerField(default=0, verbose_name="Interesados en reponer")
+
+    class Meta:
+        # Opcional: También ordena los productos por nombre alfabéticamente
+        ordering = ['nombre']
+        verbose_name = "Producto"
+        verbose_name_plural = "Productos"
 
     def __str__(self):
         return self.nombre
@@ -41,6 +53,7 @@ class Sugerencia(models.Model):
     leido = models.BooleanField(default=False)
 
     class Meta:
+        verbose_name = "Sugerencia"
         verbose_name_plural = "Buzón de Sugerencias"
 
     def __str__(self):
