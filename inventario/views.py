@@ -18,7 +18,7 @@ def buscador_productos(request):
     else:
         resultados = productos_base.all()
 
-    # FILTRO DE CATEGORÍAS: Excluimos las que no quieres mostrar
+    # Excluimos algunas categorias
     categorias_visibles = Categoria.objects.exclude(
         nombre__in=["- Sin Departamento -", "Pan granel"]
     )

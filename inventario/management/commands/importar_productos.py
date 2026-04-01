@@ -37,7 +37,7 @@ class Command(BaseCommand):
         except (ValueError, TypeError):
             return 0
 
-    def handle(self, *args, **options):
+def handle(self, *args, **options):
         ruta = options['archivo_excel']
         
         if not os.path.exists(ruta):
@@ -47,16 +47,14 @@ class Command(BaseCommand):
         try:
             workbook = openpyxl.load_workbook(ruta, data_only=True)
             sheet = workbook.active
-            self.stdout.write(self.style.SUCCESS(f'Iniciando importación protegida: {ruta}'))
+            self.stdout.write(self.style.SUCCESS(f'🚀 Iniciando importación: Protegiendo Nombres y Categorías del Admin'))
 
-            # Usamos una transacción para que si algo falla, no quede la carga a medias
             with transaction.atomic():
                 for row in sheet.iter_rows(min_row=2, values_only=True):
                     codigo_raw = row[0]
-                    if codigo_raw is None: 
-                        continue
+                    if codigo_raw is None: continue
                     
-                    # Limpieza básica de los datos del Excel
+                    # Datos del Excel
                     codigo_ext  = str(codigo_raw).split('.')[0].strip()
                     nombre_ext  = str(row[1]).strip() if row[1] else "Sin Nombre"
                     precio_ext  = self.limpiar_numero(row[3])
@@ -64,35 +62,34 @@ class Command(BaseCommand):
                     stk_min_ext = self.limpiar_numero(row[6])
                     depto_ext   = str(row[8]).strip() if row[8] else "General"
 
-                    # 1. Buscamos o creamos la categoría que viene en el Excel
-                    categoria_obj, _ = Categoria.objects.get_or_create(nombre=depto_ext)
+                    # BUSCAR SI YA EXISTE
+                    producto = Producto.objects.filter(codigo_barras=codigo_ext).first()
 
-                    # 2. Intentamos buscar el producto por su código de barras
-                    producto, created = Producto.objects.get_or_create(
-                        codigo_barras=codigo_ext,
-                        defaults={
-                            'nombre': nombre_ext,
-                            'categoria': categoria_obj,
-                            'precio': precio_ext,
-                            'stock': stock_ext,
-                            'stock_minimo': stk_min_ext,
-                            'disponible': False #Para limpiar productos nuevos
-                        }
-                    )
-
-                    if not created:
-                        # SI EL PRODUCTO YA EXISTÍA: Solo actualizamos Precio y Stock
-                        # El nombre y la categoría NO se tocan para proteger la limpieza manual.
+                    if producto:
+                        # --- PRODUCTO EXISTENTE: SOLO ACTUALIZAMOS VALORES NUMÉRICOS ---
+                        # El Nombre y la Categoría se quedan tal cual están en el Admin.
                         producto.precio = precio_ext
                         producto.stock = stock_ext
                         producto.stock_minimo = stk_min_ext
                         producto.save()
-                        self.stdout.write(f'Actualizado (Stock/Precio): {producto.nombre}')
+                        self.stdout.write(f'✅ Actualizado (Precio/Stock): {producto.nombre}')
+                    
                     else:
-                        # SI EL PRODUCTO ES NUEVO: Ya se creó con los defaults de arriba
-                        self.stdout.write(self.style.SUCCESS(f'Añadido nuevo: {nombre_ext}'))
+                        # --- PRODUCTO NUEVO: USAMOS LOS DATOS DEL EXCEL ---
+                        categoria_obj, _ = Categoria.objects.get_or_create(nombre=depto_ext)
+                        
+                        Producto.objects.create(
+                            codigo_barras=codigo_ext,
+                            nombre=nombre_ext,
+                            categoria=categoria_obj,
+                            precio=precio_ext,
+                            stock=stock_ext,
+                            stock_minimo=stk_min_ext,
+                            disponible=False 
+                        )
+                        self.stdout.write(self.style.SUCCESS(f'➕ Añadido nuevo: {nombre_ext}'))
 
-            self.stdout.write(self.style.SUCCESS('--- Proceso finalizado con éxito ---'))
+            self.stdout.write(self.style.SUCCESS('--- Proceso terminado: Todo al día ---'))
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'Error fatal: {str(e)}'))

@@ -10,14 +10,6 @@ class Command(BaseCommand):
     help = 'Generación Market Tunka - IA Completa + Acceso Superusuario'
 
     def handle(self, *args, **options):
-        # --- BLOQUE DE EMERGENCIA PARA ENTRAR AL ADMIN ---
-        if not User.objects.filter(username="jefe_tunka").exists():
-            User.objects.create_superuser("jefe_tunka", "admin@tunka.com", "Tunka2026!")
-            self.stdout.write(self.style.SUCCESS("✅ NUEVO ACCESO CREADO: Usuario 'jefe_tunka' / Clave 'Tunka2026!'"))
-        else:
-            self.stdout.write(self.style.WARNING("ℹ️ El usuario 'jefe_tunka' ya existe."))
-        # -----------------------------------------------
-
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             self.stdout.write(self.style.ERROR("❌ Falta GEMINI_API_KEY"))
