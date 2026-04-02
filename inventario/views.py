@@ -60,31 +60,35 @@ def contacto(request):
 
 # 4. Verificador de Precios (Página)
 def verificador_precios(request):
-    # IPs autorizadas (Agregamos la que me pasaste)
-    IPV4_TUNKA = "200.111.224.125"
+    # IPs autorizadas (Agregamos la nueva detectada por Railway)
+    IPV4_TUNKA_TIENDA = "200.111.224.125"
+    IPV4_TUNKA_RAILWAY = "186.10.141.46"  # <-- Tu IP nueva
     PREFIJO_IPV6_TUNKA = "2800:300:6b52:1320"
 
-    # Intentar obtener la IP real detrás del proxy
+    # Obtener la IP real
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded:
-        # Algunos proxies mandan una lista de IPs, tomamos la primera
         user_ip = x_forwarded.split(',')[0].strip()
     else:
         user_ip = request.META.get('REMOTE_ADDR')
 
-    # VALIDACIÓN
+    # VALIDACIÓN MEJORADA
     es_ip_valida = (
-        user_ip == IPV4_TUNKA or 
+        user_ip == IPV4_TUNKA_TIENDA or 
+        user_ip == IPV4_TUNKA_RAILWAY or # Valida la IP de Railway
         user_ip.startswith(PREFIJO_IPV6_TUNKA) or 
         user_ip in ['127.0.0.1', '::1']
     )
     
+    # La llave maestra ?tienda=ok
     llave_maestra = request.GET.get('tienda') == 'ok'
+    
+    # Si entra por IP o por Llave, le damos acceso
     en_tienda = es_ip_valida or llave_maestra
 
     return render(request, 'inventario/verificador.html', {
         'en_tienda': en_tienda,
-        'user_ip': user_ip  # IMPORTANTE: Enviamos esto para verlo en pantalla
+        'user_ip': user_ip  
     })
 
 # 5. API para el Verificador
