@@ -27,7 +27,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-f!8+$pb@y%3rl3&-@d8ab4!+&r
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['tunkamarket.cl', 'www.tunkamarket.cl', 'web-production-9ffaa.up.railway.app', '.railway.app', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['tunkamarket.cl', 'www.tunkamarket.cl', 'web-production-9ffaa.up.railway.app', '.railway.app', 'localhost', '127.0.0.1', 'josphine-papalonna-blackfly.ngrok-free.dev']
 
 # Permite que Django confíe en la URL de Railway para los formularios
 CSRF_TRUSTED_ORIGINS = [

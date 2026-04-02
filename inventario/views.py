@@ -62,7 +62,7 @@ def contacto(request):
 def verificador_precios(request):
     # IPs autorizadas (Agregamos la que me pasaste)
     IPV4_TUNKA = "200.111.224.125"
-    PREFIJO_IPV6_TUNKA = "2800:300:6b52:850"
+    PREFIJO_IPV6_TUNKA = "2800:300:6b52:1320"
 
     # Intentar obtener la IP real detrás del proxy
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
