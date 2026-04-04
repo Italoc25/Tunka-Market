@@ -134,26 +134,50 @@
             }
 
             function startQuagga() {
+                // 1. EL DETECTIVE: Averiguamos si es Android de forma invisible
+                const isAndroid = /Android/i.test(navigator.userAgent);
+
+                // 2. CONFIGURACIÓN A MEDIDA: Dependiendo del celular
+                const cameraConstraints = isAndroid ? {
+                    facingMode: "environment",
+                    width: { ideal: 1280 }, // Android necesita HD para leer las líneas juntas
+                    height: { ideal: 720 },
+                    // Intentamos forzar el autoenfoque continuo en Android
+                    advanced: [{ focusMode: "continuous" }] 
+                } : {
+                    facingMode: "environment",
+                    width: 640, // Dejamos intacto el de iPhone que ya funciona perfecto
+                    height: 480
+                };
+
                 Quagga.init({
                     inputStream: {
                         name: "Live",
                         type: "LiveStream",
                         target: document.querySelector('#interactive'),
-                        constraints: {
-                            facingMode: "environment",
-                            width: 640, 
-                            height: 480
-                        },
+                        constraints: cameraConstraints, // Pasamos la configuración inteligente
                         area: { top: "20%", right: "10%", left: "10%", bottom: "20%" },
                     },
-                    decoder: { readers: ["ean_reader", "upc_reader"] },
+                    locator: {
+                        // Si es Android y HD, necesita un "parche" de búsqueda más grande
+                        patchSize: isAndroid ? "large" : "medium", 
+                        halfSample: true
+                    },
+                    decoder: { 
+                        readers: ["ean_reader", "upc_reader"],
+                        multiple: false // Evita que se confunda leyendo varias cosas a la vez
+                    },
                     locate: true
                 }, function(err) {
-                    if (err) return;
+                    if (err) {
+                        console.error("Error al iniciar Quagga:", err);
+                        return;
+                    }
                     Quagga.start();
                     initCameraCapabilities();
                 });
 
+                // El resto del código se queda igual (onDetected, onProcessed)
                 Quagga.onDetected(function(result) {
                     let code = result.codeResult.code;
                     if (!validarCodigo(code)) return; 
@@ -177,7 +201,6 @@
                     }
                 });
             }
-
             function initCameraCapabilities() {
                 track = Quagga.CameraAccess.getActiveTrack();
                 if (!track) return;
