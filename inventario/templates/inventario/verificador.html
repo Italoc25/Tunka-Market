@@ -5,6 +5,46 @@
     <h2 class="mb-4">Verificador de Precios</h2>
     
     {% if en_tienda %}
+        <div class="modal fade" id="instruccionesModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg" style="border-radius: 20px;">
+                    <div class="modal-body p-4">
+                        <div class="text-center mb-4">
+                            <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+                                <i class="bi bi-camera-fill fs-1"></i>
+                            </div>
+                            <h4 class="fw-bold">¿Cómo usar el verificador?</h4>
+                        </div>
+                        
+                        <div class="text-start mb-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="badge bg-primary rounded-circle me-3">1</span>
+                                <p class="mb-0">Apunta la cámara al <b>código de barras</b> del producto.</p>
+                            </div>
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="badge bg-primary rounded-circle me-3">2</span>
+                                <p class="mb-0">Mantén el código dentro del <b>cuadro rojo</b>.</p>
+                            </div>
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="badge bg-primary rounded-circle me-3">3</span>
+                                <p class="mb-0">Si está borroso, usa el <b>Zoom</b> o aleja el celular.</p>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-primary btn-lg rounded-pill py-3 fw-bold" data-bs-dismiss="modal">¡Entendido!</button>
+                            <div class="form-check mt-2 d-flex justify-content-center">
+                                <input class="form-check-input me-2" type="checkbox" id="check-no-mostrar">
+                                <label class="form-check-label small text-muted" for="check-no-mostrar">
+                                    No volver a mostrar
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="scanner-section">
             <div class="input-group mb-3 shadow-sm">
                 <input type="text" id="codigo-manual" class="form-control" placeholder="Ingresa código manualmente...">
@@ -62,6 +102,32 @@
             let track = null;
             let scannerLoop = null;
             let torchActive = false;
+
+            // LÓGICA DEL MODAL E INICIO
+            window.onload = function() {
+                // Verificar si el usuario ya pidió no ver las instrucciones
+                const ocultarInstrucciones = localStorage.getItem('ocultarInstrucciones');
+                const modalElement = document.getElementById('instruccionesModal');
+                const myModal = new bootstrap.Modal(modalElement);
+
+                if (!ocultarInstrucciones) {
+                    myModal.show();
+                }
+
+                // Guardar preferencia al cerrar el modal si el check está marcado
+                modalElement.addEventListener('hide.bs.modal', function () {
+                    if (document.getElementById('check-no-mostrar').checked) {
+                        localStorage.setItem('ocultarInstrucciones', 'true');
+                    }
+                });
+
+                // Iniciar cámara
+                if ('BarcodeDetector' in window) {
+                    iniciarLectorNativo();
+                } else {
+                    startQuagga();
+                }
+            };
 
             function playBeep() {
                 try {
@@ -189,13 +255,10 @@
             }
 
             function initCameraCapabilities() {
-                // Habilitamos botón de flash manualmente siempre
                 document.getElementById('btn-torch').disabled = false;
-
                 if (!track && typeof Quagga !== 'undefined') {
                     try { track = Quagga.CameraAccess.getActiveTrack(); } catch(e) {}
                 }
-                
                 if (track && track.getCapabilities) {
                     const caps = track.getCapabilities();
                     if (caps.zoom) {
@@ -212,43 +275,28 @@
 
             function toggleTorch() {
                 const btn = document.getElementById('btn-torch');
-                
-                // 1. Cambiamos el estado lógico
                 torchActive = !torchActive;
-
-                // 2. CAMBIO VISUAL FORZADO (Independiente de la cámara)
                 if (torchActive) {
-                    btn.style.backgroundColor = "#ffc107"; // Amarillo sólido
+                    btn.style.backgroundColor = "#ffc107";
                     btn.style.borderColor = "#ffc107";
-                    btn.style.color = "#000"; // Icono negro para contraste
+                    btn.style.color = "#000";
                 } else {
                     btn.style.backgroundColor = "transparent";
                     btn.style.borderColor = "#ffc107";
-                    btn.style.color = "#ffc107"; // Icono amarillo
+                    btn.style.color = "#ffc107";
                 }
-
-                // 3. Intentamos activar el hardware si está disponible
                 if (track) {
-                    track.applyConstraints({
-                        advanced: [{ torch: torchActive }]
-                    }).catch(e => console.log("Hardware de flash no disponible o bloqueado"));
+                    track.applyConstraints({ advanced: [{ torch: torchActive }] }).catch(e => {});
                 }
             }
-
-            window.onload = function() {
-                if ('BarcodeDetector' in window) {
-                    iniciarLectorNativo();
-                } else {
-                    startQuagga();
-                }
-            };
         </script>
 
         <style>
             #interactive video { width: 100%; height: 100%; object-fit: cover; }
             canvas.drawingBuffer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-            /* Evita el parpadeo azul al tocar en móviles */
             #btn-torch { -webkit-tap-highlight-color: transparent; }
+            .modal-content { border: none; }
+            .badge.rounded-circle { width: 25px; height: 25px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; }
         </style>
     {% else %}
         <div class="alert alert-warning py-5">
