@@ -24,7 +24,7 @@
                     <label for="zoom-slider" class="form-label small text-muted mb-0"><i class="bi bi-zoom-in"></i> Zoom</label>
                     <input type="range" class="form-range" id="zoom-slider" min="1" max="3" step="0.1" value="1" disabled>
                 </div>
-                <button id="btn-torch" class="btn btn-outline-warning rounded-circle me-2" style="width: 50px; height: 50px;" disabled onclick="toggleTorch()">
+                <button id="btn-torch" class="btn btn-outline-warning rounded-circle me-2" style="width: 50px; height: 50px; transition: all 0.2s;" disabled onclick="toggleTorch()">
                     <i class="bi bi-lightbulb-fill"></i>
                 </button>
                 <button class="btn btn-outline-secondary rounded-circle" style="width: 50px; height: 50px;" onclick="location.reload()">
@@ -62,7 +62,6 @@
             let track = null;
             let scannerLoop = null;
             let torchActive = false;
-            let imageCapture = null;
 
             function playBeep() {
                 try {
@@ -75,7 +74,7 @@
                     gainNode.connect(audioCtx.destination);
                     gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
                     oscillator.start();
-                    oscillator.stop(audioCtx.currentTime + 0.2);
+                    oscillator.stop(audioCtx.currentTime + 0.1);
                 } catch (e) { }
             }
 
@@ -142,15 +141,7 @@
                     });
                     video.srcObject = stream;
                     track = stream.getVideoTracks()[0];
-                    
-                    // Intentar inicializar ImageCapture para el Flash (Android)
-                    if (window.ImageCapture) {
-                        imageCapture = new ImageCapture(track);
-                    }
-
-                    video.onloadedmetadata = () => {
-                        setTimeout(initCameraCapabilities, 1000);
-                    };
+                    video.onloadedmetadata = () => { setTimeout(initCameraCapabilities, 1000); };
 
                     const barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] });
                     const render = async () => {
@@ -185,7 +176,6 @@
                     Quagga.start();
                     setTimeout(() => {
                         track = Quagga.CameraAccess.getActiveTrack();
-                        if (window.ImageCapture && track) imageCapture = new ImageCapture(track);
                         initCameraCapabilities();
                     }, 1000);
                 });
@@ -199,62 +189,49 @@
             }
 
             function initCameraCapabilities() {
-                if (!track) return;
-                const caps = track.getCapabilities ? track.getCapabilities() : {};
-                
-                if (caps.zoom) {
-                    const slider = document.getElementById('zoom-slider');
-                    slider.disabled = false;
-                    slider.min = caps.zoom.min;
-                    slider.max = caps.zoom.max;
-                    slider.oninput = (e) => {
-                        track.applyConstraints({ advanced: [{ zoom: e.target.value }] });
-                    };
-                }
+                // Habilitamos botón de flash manualmente siempre
+                document.getElementById('btn-torch').disabled = false;
 
-                // Habilitamos el botón de flash si existe la capacidad
-                if (caps.torch || ('torch' in caps)) {
-                    document.getElementById('btn-torch').disabled = false;
-                } else {
-                    // Forzamos habilitar para probar en dispositivos que no reportan caps
-                    document.getElementById('btn-torch').disabled = false; 
+                if (!track && typeof Quagga !== 'undefined') {
+                    try { track = Quagga.CameraAccess.getActiveTrack(); } catch(e) {}
+                }
+                
+                if (track && track.getCapabilities) {
+                    const caps = track.getCapabilities();
+                    if (caps.zoom) {
+                        const slider = document.getElementById('zoom-slider');
+                        slider.disabled = false;
+                        slider.min = caps.zoom.min;
+                        slider.max = caps.zoom.max;
+                        slider.oninput = (e) => {
+                            track.applyConstraints({ advanced: [{ zoom: e.target.value }] });
+                        };
+                    }
                 }
             }
 
             function toggleTorch() {
-                if (!track) {
-                    // Si no hay cámara detectada, igual damos feedback visual de que se intentó
-                    console.log("Cámara no detectada para el flash");
-                }
-
                 const btn = document.getElementById('btn-torch');
                 
-                // Invertimos el estado lógico primero
+                // 1. Cambiamos el estado lógico
                 torchActive = !torchActive;
 
-                // CAMBIO VISUAL INMEDIATO (Sin esperar a la cámara)
+                // 2. CAMBIO VISUAL FORZADO (Independiente de la cámara)
                 if (torchActive) {
-                    btn.classList.remove('btn-outline-warning');
-                    btn.classList.add('btn-warning'); // Se pone amarillo sólido
+                    btn.style.backgroundColor = "#ffc107"; // Amarillo sólido
+                    btn.style.borderColor = "#ffc107";
+                    btn.style.color = "#000"; // Icono negro para contraste
                 } else {
-                    btn.classList.remove('btn-warning');
-                    btn.classList.add('btn-outline-warning'); // Vuelve al borde amarillo
+                    btn.style.backgroundColor = "transparent";
+                    btn.style.borderColor = "#ffc107";
+                    btn.style.color = "#ffc107"; // Icono amarillo
                 }
 
-                // Intentamos prender la luz en segundo plano, si falla, no importa
+                // 3. Intentamos activar el hardware si está disponible
                 if (track) {
                     track.applyConstraints({
                         advanced: [{ torch: torchActive }]
-                    }).catch(err => {
-                        console.log("El hardware no respondió al flash, pero cambiamos el botón.");
-                    });
-                }
-            }
-            function actualizarInterfazBoton(btn) {
-                if (torchActive) {
-                    btn.classList.replace('btn-outline-warning', 'btn-warning');
-                } else {
-                    btn.classList.replace('btn-warning', 'btn-outline-warning');
+                    }).catch(e => console.log("Hardware de flash no disponible o bloqueado"));
                 }
             }
 
@@ -270,6 +247,8 @@
         <style>
             #interactive video { width: 100%; height: 100%; object-fit: cover; }
             canvas.drawingBuffer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+            /* Evita el parpadeo azul al tocar en móviles */
+            #btn-torch { -webkit-tap-highlight-color: transparent; }
         </style>
     {% else %}
         <div class="alert alert-warning py-5">
