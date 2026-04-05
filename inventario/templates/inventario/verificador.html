@@ -1,12 +1,67 @@
-<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+{% extends 'inventario/base.html' %}
+
+{% block content %}
+<div class="container text-center" style="max-width: 600px;">
+    <h2 class="mb-4">Verificador de Precios</h2>
+    
+    {% if en_tienda %}
+        <div id="scanner-section">
+            <div class="input-group mb-3 shadow-sm">
+                <input type="text" id="codigo-manual" class="form-control" placeholder="Ingresa código manualmente...">
+                <button class="btn btn-primary" onclick="buscarPrecio(document.getElementById('codigo-manual').value)">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+            
+            <div style="position: relative;">
+                <div id="interactive" class="viewport shadow-sm" style="width: 100%; height: 350px; border-radius: 15px; overflow: hidden; background-color: #000; position: relative;">
+                    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 150px; border: 2px solid rgba(255, 0, 0, 0.5); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); z-index: 10; border-radius: 10px; pointer-events: none;"></div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 px-2">
+                <div class="w-100 me-3">
+                    <label for="zoom-slider" class="form-label small text-muted mb-0"><i class="bi bi-zoom-in"></i> Zoom</label>
+                    <input type="range" class="form-range" id="zoom-slider" min="1" max="3" step="0.1" value="1" disabled>
+                </div>
+                <button id="btn-torch" class="btn btn-outline-warning rounded-circle me-2" style="width: 50px; height: 50px;" disabled onclick="toggleTorch()">
+                    <i class="bi bi-lightbulb-fill"></i>
+                </button>
+                <button class="btn btn-outline-secondary rounded-circle" style="width: 50px; height: 50px;" onclick="location.reload()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
+            <p class="text-muted small mt-2">¿No lee el código? Intenta <b>alejar</b> el celular y aumenta el <b>zoom</b>, o pulsa el botón de recargar <i class="bi bi-arrow-clockwise"></i></p>
+        </div>
+        
+        <div id="resultado-panel" class="mt-2 p-4 border-0 rounded-4 shadow bg-white" style="display: none;">
+            <div id="res-icon-container" class="mb-3">
+                <i id="res-icon" class="bi bi-check-circle-fill text-success display-4"></i>
+            </div>
+            <h1 id="res-precio" class="display-1 fw-bold text-success mb-0" style="font-size: 5rem;"></h1>
+            <h2 id="res-nombre" class="text-dark fw-bold mt-2"></h2>
+            <hr>
+            <p id="res-categoria" class="badge fs-5 px-3 py-2"></p>
+            
+            <div class="d-grid gap-3 mt-4">
+                <button class="btn btn-lg btn-success py-3 shadow" onclick="location.reload()">
+                    <i class="bi bi-camera-fill me-2"></i> Escanear otro producto
+                </button>
+                <a href="{% url 'home' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-house me-2"></i> Volver al Inicio
+                </a>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
         
         <script>
             let lastResult = null;
             let countResults = 0;
             let track = null;
-            let scannerLoop = null; // Para el motor nativo de Android
+            let scannerLoop = null;
 
-            // --- TUS FUNCIONES ORIGINALES (SIN CAMBIOS) ---
             function playBeep() {
                 try {
                     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -43,7 +98,7 @@
             function buscarPrecio(codigo) {
                 if (!codigo) return;
                 
-                // Detenemos ambos posibles motores
+                // Detenemos cualquier motor activo
                 try { Quagga.stop(); } catch(e) { }
                 if (scannerLoop) cancelAnimationFrame(scannerLoop);
                 
@@ -82,13 +137,11 @@
                     .catch(e => { resNombre.innerText = "Error de conexión"; });
             }
 
-            // --- MOTOR NUEVO: DETECTOR NATIVO (EL CAMBIO CLAVE PARA ANDROID) ---
+            // Motor Nativo (Android/Chrome)
             async function iniciarLectorNativo() {
                 const container = document.querySelector('#interactive');
                 const video = document.createElement('video');
-                video.style.width = "100%";
-                video.style.height = "100%";
-                video.style.objectFit = "cover";
+                video.style.cssText = "width: 100%; height: 100%; object-fit: cover;";
                 video.setAttribute('autoplay', '');
                 video.setAttribute('playsinline', '');
                 container.appendChild(video);
@@ -105,37 +158,31 @@
                     
                     const render = async () => {
                         if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                            const barcodes = await barcodeDetector.detect(video);
-                            if (barcodes.length > 0) {
-                                let code = barcodes[0].rawValue;
-                                if (validarCodigo(code)) {
-                                    // Verificación doble para evitar falsos positivos
-                                    if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
-                                    if (countResults >= 1) { buscarPrecio(code); return; }
+                            try {
+                                const barcodes = await barcodeDetector.detect(video);
+                                if (barcodes.length > 0) {
+                                    let code = barcodes[0].rawValue;
+                                    if (validarCodigo(code)) {
+                                        if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
+                                        if (countResults >= 1) { buscarPrecio(code); return; }
+                                    }
                                 }
-                            }
+                            } catch (e) {}
                         }
                         scannerLoop = requestAnimationFrame(render);
                     };
                     render();
-                } catch (err) {
-                    startQuagga(); // Si falla el motor nativo, usamos Quagga
-                }
+                } catch (err) { startQuagga(); }
             }
 
-            // --- MOTOR ORIGINAL: QUAGGA (PARA IPHONE) ---
+            // Motor Quagga (iPhone/Safari)
             function startQuagga() {
-                const isAndroid = /Android/i.test(navigator.userAgent);
                 Quagga.init({
                     inputStream: {
                         name: "Live",
                         type: "LiveStream",
                         target: document.querySelector('#interactive'),
-                        constraints: { 
-                            facingMode: "environment", 
-                            width: isAndroid ? 1280 : 640, 
-                            height: isAndroid ? 720 : 480 
-                        },
+                        constraints: { facingMode: "environment", width: 640, height: 480 },
                         area: { top: "20%", right: "10%", left: "10%", bottom: "20%" },
                     },
                     decoder: { readers: ["ean_reader", "upc_reader"] },
@@ -154,31 +201,28 @@
                 });
             }
 
-            // --- CONTROLES DE CÁMARA (MANTENEMOS TU ZOOM Y LINTERNA) ---
             function initCameraCapabilities() {
                 if (!track && typeof Quagga !== 'undefined') {
                     try { track = Quagga.CameraAccess.getActiveTrack(); } catch(e){}
                 }
                 if (!track) return;
-                
-                const capabilities = track.getCapabilities();
-                if (capabilities.zoom) {
-                    const zoomSlider = document.getElementById('zoom-slider');
-                    zoomSlider.disabled = false;
-                    zoomSlider.min = capabilities.zoom.min;
-                    zoomSlider.max = capabilities.zoom.max;
-                    zoomSlider.oninput = e => { track.applyConstraints({ advanced: [{ zoom: e.target.value }] }); };
+                const caps = track.getCapabilities();
+                if (caps.zoom) {
+                    const slider = document.getElementById('zoom-slider');
+                    slider.disabled = false;
+                    slider.min = caps.zoom.min;
+                    slider.max = caps.zoom.max;
+                    slider.oninput = e => { track.applyConstraints({ advanced: [{ zoom: e.target.value }] }); };
                 }
-                if (capabilities.torch) { document.getElementById('btn-torch').disabled = false; }
+                if (caps.torch) { document.getElementById('btn-torch').disabled = false; }
             }
 
             function toggleTorch() {
                 if (!track) return;
-                const currentTorch = track.getSettings().torch || false;
-                track.applyConstraints({ advanced: [{ torch: !currentTorch }] });
+                const current = track.getSettings().torch || false;
+                track.applyConstraints({ advanced: [{ torch: !current }] });
             }
 
-            // --- INICIO INTELIGENTE ---
             window.onload = function() {
                 if ('BarcodeDetector' in window) {
                     iniciarLectorNativo();
@@ -192,3 +236,18 @@
             #interactive video { width: 100%; height: 100%; object-fit: cover; }
             canvas.drawingBuffer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         </style>
+
+    {% else %}
+        <div class="alert alert-warning py-5">
+            <i class="bi bi-wifi-off display-1 d-block mb-3"></i>
+            <h4>🔒 Acceso Restringido</h4>
+            <p>Por favor, conéctate al WiFi del local para usar el verificador.</p>
+            <div class="mt-4">
+                <a href="{% url 'home' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-house"></i> Volver al Inicio
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
