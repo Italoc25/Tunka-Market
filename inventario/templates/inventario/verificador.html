@@ -62,6 +62,7 @@
             let track = null;
             let scannerLoop = null;
             let torchActive = false;
+            let imageCapture = null;
 
             function playBeep() {
                 try {
@@ -72,9 +73,7 @@
                     oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
                     oscillator.connect(gainNode);
                     gainNode.connect(audioCtx.destination);
-                    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-                    gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.01);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                    gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
                     oscillator.start();
                     oscillator.stop(audioCtx.currentTime + 0.2);
                 } catch (e) { }
@@ -100,10 +99,8 @@
                 if (!codigo) return;
                 try { Quagga.stop(); } catch(e) { }
                 if (scannerLoop) cancelAnimationFrame(scannerLoop);
-                const panel = document.getElementById('resultado-panel');
-                const scanner = document.getElementById('scanner-section');
-                scanner.style.display = 'none';
-                panel.style.display = 'block';
+                document.getElementById('scanner-section').style.display = 'none';
+                document.getElementById('resultado-panel').style.display = 'block';
 
                 fetch(`/api/producto/${codigo}/`)
                     .then(response => response.json())
@@ -146,6 +143,11 @@
                     video.srcObject = stream;
                     track = stream.getVideoTracks()[0];
                     
+                    // Intentar inicializar ImageCapture para el Flash (Android)
+                    if (window.ImageCapture) {
+                        imageCapture = new ImageCapture(track);
+                    }
+
                     video.onloadedmetadata = () => {
                         setTimeout(initCameraCapabilities, 1000);
                     };
@@ -174,14 +176,18 @@
                 Quagga.init({
                     inputStream: {
                         name: "Live", type: "LiveStream", target: document.querySelector('#interactive'),
-                        constraints: { facingMode: "environment", width: 640, height: 480 }
+                        constraints: { facingMode: "environment", width: 1280, height: 720 }
                     },
                     decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader", "code_39_reader"] },
                     locate: true
                 }, function(err) {
                     if (err) return;
                     Quagga.start();
-                    setTimeout(initCameraCapabilities, 1000);
+                    setTimeout(() => {
+                        track = Quagga.CameraAccess.getActiveTrack();
+                        if (window.ImageCapture && track) imageCapture = new ImageCapture(track);
+                        initCameraCapabilities();
+                    }, 1000);
                 });
 
                 Quagga.onDetected(function(result) {
@@ -193,20 +199,9 @@
             }
 
             function initCameraCapabilities() {
-                // Intentar obtener el track si aún no está definido
-                if (!track) {
-                    try {
-                        if (typeof Quagga !== 'undefined' && Quagga.CameraAccess) {
-                            track = Quagga.CameraAccess.getActiveTrack();
-                        }
-                    } catch(e) {}
-                }
-
                 if (!track) return;
-
                 const caps = track.getCapabilities ? track.getCapabilities() : {};
                 
-                // Zoom
                 if (caps.zoom) {
                     const slider = document.getElementById('zoom-slider');
                     slider.disabled = false;
@@ -217,46 +212,42 @@
                     };
                 }
 
-                // Flash - Lo habilitamos si el navegador dice que existe la capacidad
+                // Habilitamos el botón de flash si existe la capacidad
                 if (caps.torch || ('torch' in caps)) {
                     document.getElementById('btn-torch').disabled = false;
                 } else {
-                    // Algunos Android no reportan caps.torch pero sí funcionan
+                    // Forzamos habilitar para probar en dispositivos que no reportan caps
                     document.getElementById('btn-torch').disabled = false; 
                 }
             }
 
             function toggleTorch() {
-                // Si track se perdió, intentamos recuperarlo al vuelo
-                if (!track && typeof Quagga !== 'undefined') {
-                    track = Quagga.CameraAccess.getActiveTrack();
-                }
-
-                if (!track) {
-                    alert("Cámara no lista");
-                    return;
-                }
+                if (!track) return;
 
                 const btn = document.getElementById('btn-torch');
                 torchActive = !torchActive;
 
-                // Aplicar el cambio a la cámara
+                // Método 1: applyConstraints (Estándar)
                 track.applyConstraints({
                     advanced: [{ torch: torchActive }]
                 }).then(() => {
-                    // Cambiar color del botón manualmente
-                    if (torchActive) {
-                        btn.classList.remove('btn-outline-warning');
-                        btn.classList.add('btn-warning');
-                    } else {
-                        btn.classList.remove('btn-warning');
-                        btn.classList.add('btn-outline-warning');
-                    }
+                    actualizarInterfazBoton(btn);
                 }).catch(err => {
-                    console.error(err);
-                    // Si falla, revertimos el estado lógico
-                    torchActive = !torchActive;
+                    // Método 2: ImageCapture (Android fallback)
+                    if (imageCapture) {
+                        imageCapture.setOptions({ fillLightMode: torchActive ? 'torch' : 'off' })
+                            .then(() => actualizarInterfazBoton(btn))
+                            .catch(e => console.error("Fallo total Flash", e));
+                    }
                 });
+            }
+
+            function actualizarInterfazBoton(btn) {
+                if (torchActive) {
+                    btn.classList.replace('btn-outline-warning', 'btn-warning');
+                } else {
+                    btn.classList.replace('btn-warning', 'btn-outline-warning');
+                }
             }
 
             window.onload = function() {
