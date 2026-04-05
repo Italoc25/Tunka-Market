@@ -79,10 +79,13 @@
                 } catch (e) { }
             }
 
+            // MODIFICADO: Ahora valida EAN si tiene el largo, pero deja pasar otros códigos
             function validarCodigo(codigo) {
-                if (!/^\d+$/.test(codigo)) return false;
-                let cadena = (codigo.length === 12) ? "0" + codigo : codigo;
-                if (cadena.length === 8 || cadena.length === 13) {
+                if (!/^\d+$/.test(codigo)) return false; // Solo números
+                
+                // Si es un código estándar (8, 12 o 13 dígitos), aplicamos validación matemática
+                if (codigo.length === 8 || codigo.length === 12 || codigo.length === 13) {
+                    let cadena = (codigo.length === 12) ? "0" + codigo : codigo;
                     let sum = 0;
                     let reverseCode = cadena.split('').reverse();
                     for (let i = 1; i < reverseCode.length; i++) {
@@ -92,7 +95,9 @@
                     let checkCalculado = (10 - (sum % 10)) % 10;
                     return checkCalculado === parseInt(reverseCode[0]);
                 }
-                return false;
+                
+                // Si tiene cualquier otro largo (ej: 4, 5, 6 dígitos), lo aceptamos sin validar algoritmo
+                return codigo.length > 3; 
             }
 
             function buscarPrecio(codigo) {
@@ -134,7 +139,6 @@
                     .catch(e => { resNombre.innerText = "Error de conexión"; });
             }
 
-            // MOTOR ANDROID: Ultra Rápido
             async function iniciarLectorNativo() {
                 const container = document.querySelector('#interactive');
                 const video = document.createElement('video');
@@ -151,7 +155,8 @@
                     track = stream.getVideoTracks()[0];
                     initCameraCapabilities();
 
-                    const barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a'] });
+                    // Android suele leer casi todo por defecto, mantenemos formatos comunes
+                    const barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] });
                     
                     const render = async () => {
                         if (video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -172,7 +177,6 @@
                 } catch (err) { startQuagga(); }
             }
 
-            // MOTOR IPHONE: Ultra Preciso
             function startQuagga() {
                 Quagga.init({
                     inputStream: {
@@ -188,7 +192,16 @@
                         area: { top: "30%", right: "15%", left: "15%", bottom: "30%" },
                     },
                     locator: { patchSize: "medium", halfSample: false },
-                    decoder: { readers: ["ean_reader", "upc_reader"] },
+                    decoder: { 
+                        // MODIFICADO: Añadimos lectores para códigos no-estándar
+                        readers: [
+                            "ean_reader", 
+                            "ean_8_reader", 
+                            "upc_reader", 
+                            "code_128_reader", 
+                            "code_39_reader"
+                        ] 
+                    },
                     locate: true
                 }, function(err) {
                     if (err) return;
@@ -199,8 +212,8 @@
                 Quagga.onDetected(function(result) {
                     let code = result.codeResult.code;
                     if (!validarCodigo(code)) return; 
-                    // FILTRO: Solo si la IA está +90% segura
-                    if (result.codeResult.confidence < 0.9) return;
+                    
+                    if (result.codeResult.confidence < 0.8) return; // Bajamos levemente a 0.8 para códigos difíciles
 
                     if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
                     if (countResults >= 3) { buscarPrecio(code); }
