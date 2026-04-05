@@ -32,7 +32,7 @@
                 </button>
             </div>
 
-            <p class="text-muted small mt-2">¿No lee el código? Intenta <b>alejar</b> el celular y aumenta el <b>zoom</b>, o pulsa el botón de recargar <i class="bi bi-arrow-clockwise"></i></p>
+            <p class="text-muted small mt-2">¿No lee el código? Intenta <b>alejar</b> el celular y aumenta el <b>zoom</b>.</p>
         </div>
         
         <div id="resultado-panel" class="mt-2 p-4 border-0 rounded-4 shadow bg-white" style="display: none;">
@@ -46,10 +46,10 @@
             
             <div class="d-grid gap-3 mt-4">
                 <button class="btn btn-lg btn-success py-3 shadow" onclick="location.reload()">
-                    <i class="bi bi-camera-fill me-2"></i> Escanear otro producto
+                    <i class="bi bi-camera-fill me-2"></i> Escanear otro
                 </button>
                 <a href="{% url 'home' %}" class="btn btn-outline-secondary">
-                    <i class="bi bi-house me-2"></i> Volver al Inicio
+                    <i class="bi bi-house me-2"></i> Inicio
                 </a>
             </div>
         </div>
@@ -97,8 +97,6 @@
 
             function buscarPrecio(codigo) {
                 if (!codigo) return;
-                
-                // Detenemos cualquier motor activo
                 try { Quagga.stop(); } catch(e) { }
                 if (scannerLoop) cancelAnimationFrame(scannerLoop);
                 
@@ -112,7 +110,6 @@
                 scanner.style.display = 'none';
                 panel.style.display = 'block';
                 resNombre.innerText = "Buscando...";
-                resPrecio.innerText = "";
 
                 fetch(`/api/producto/${codigo}/`)
                     .then(response => response.json())
@@ -137,7 +134,7 @@
                     .catch(e => { resNombre.innerText = "Error de conexión"; });
             }
 
-            // Motor Nativo (Android/Chrome)
+            // MOTOR ANDROID: Ultra Rápido
             async function iniciarLectorNativo() {
                 const container = document.querySelector('#interactive');
                 const video = document.createElement('video');
@@ -175,16 +172,22 @@
                 } catch (err) { startQuagga(); }
             }
 
-            // Motor Quagga (iPhone/Safari)
+            // MOTOR IPHONE: Ultra Preciso
             function startQuagga() {
                 Quagga.init({
                     inputStream: {
                         name: "Live",
                         type: "LiveStream",
                         target: document.querySelector('#interactive'),
-                        constraints: { facingMode: "environment", width: 640, height: 480 },
-                        area: { top: "20%", right: "10%", left: "10%", bottom: "20%" },
+                        constraints: { 
+                            facingMode: "environment", 
+                            width: 640, 
+                            height: 480,
+                            aspectRatio: { min: 1, max: 2 }
+                        },
+                        area: { top: "30%", right: "15%", left: "15%", bottom: "30%" },
                     },
+                    locator: { patchSize: "medium", halfSample: false },
                     decoder: { readers: ["ean_reader", "upc_reader"] },
                     locate: true
                 }, function(err) {
@@ -196,8 +199,22 @@
                 Quagga.onDetected(function(result) {
                     let code = result.codeResult.code;
                     if (!validarCodigo(code)) return; 
+                    // FILTRO: Solo si la IA está +90% segura
+                    if (result.codeResult.confidence < 0.9) return;
+
                     if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
                     if (countResults >= 3) { buscarPrecio(code); }
+                });
+
+                Quagga.onProcessed(function(result) {
+                    var drawingCtx = Quagga.canvas.ctx.overlay,
+                        drawingCanvas = Quagga.canvas.dom.overlay;
+                    if (result) {
+                        drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
+                        if (result.box) {
+                            Quagga.ImageDebug.drawPath(result.box, {x: 0, y: 1}, drawingCtx, {color: "#0d6efd", lineWidth: 3});
+                        }
+                    }
                 });
             }
 
@@ -241,12 +258,8 @@
         <div class="alert alert-warning py-5">
             <i class="bi bi-wifi-off display-1 d-block mb-3"></i>
             <h4>🔒 Acceso Restringido</h4>
-            <p>Por favor, conéctate al WiFi del local para usar el verificador.</p>
-            <div class="mt-4">
-                <a href="{% url 'home' %}" class="btn btn-outline-secondary">
-                    <i class="bi bi-house"></i> Volver al Inicio
-                </a>
-            </div>
+            <p>Conéctate al WiFi del local para usar el verificador.</p>
+            <a href="{% url 'home' %}" class="btn btn-outline-secondary mt-3">Volver al Inicio</a>
         </div>
     {% endif %}
 </div>
