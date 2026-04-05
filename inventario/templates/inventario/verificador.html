@@ -61,6 +61,7 @@
             let countResults = 0;
             let track = null;
             let scannerLoop = null;
+            let torchActive = false;
 
             function playBeep() {
                 try {
@@ -99,22 +100,19 @@
                 if (!codigo) return;
                 try { Quagga.stop(); } catch(e) { }
                 if (scannerLoop) cancelAnimationFrame(scannerLoop);
-                
                 const panel = document.getElementById('resultado-panel');
                 const scanner = document.getElementById('scanner-section');
-                const resNombre = document.getElementById('res-nombre');
-                const resPrecio = document.getElementById('res-precio');
-                const resCate = document.getElementById('res-categoria');
-                const resIcon = document.getElementById('res-icon');
-
                 scanner.style.display = 'none';
                 panel.style.display = 'block';
-                resNombre.innerText = "Buscando...";
 
                 fetch(`/api/producto/${codigo}/`)
                     .then(response => response.json())
                     .then(data => {
                         playBeep();
+                        const resNombre = document.getElementById('res-nombre');
+                        const resPrecio = document.getElementById('res-precio');
+                        const resCate = document.getElementById('res-categoria');
+                        const resIcon = document.getElementById('res-icon');
                         if (data.success) {
                             resNombre.innerText = data.nombre;
                             resPrecio.innerText = "$" + data.precio;
@@ -130,8 +128,7 @@
                             resCate.className = "badge bg-danger text-white fs-5 px-3 py-2";
                             resIcon.className = "bi bi-exclamation-triangle-fill text-danger display-4";
                         }
-                    })
-                    .catch(e => { resNombre.innerText = "Error de conexión"; });
+                    });
             }
 
             async function iniciarLectorNativo() {
@@ -150,11 +147,10 @@
                     track = stream.getVideoTracks()[0];
                     
                     video.onloadedmetadata = () => {
-                        setTimeout(initCameraCapabilities, 500);
+                        setTimeout(initCameraCapabilities, 1000);
                     };
 
                     const barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] });
-                    
                     const render = async () => {
                         if (video.readyState === video.HAVE_ENOUGH_DATA) {
                             try {
@@ -177,77 +173,90 @@
             function startQuagga() {
                 Quagga.init({
                     inputStream: {
-                        name: "Live",
-                        type: "LiveStream",
-                        target: document.querySelector('#interactive'),
-                        constraints: { 
-                            facingMode: "environment", 
-                            width: 640, 
-                            height: 480,
-                            aspectRatio: { min: 1, max: 2 }
-                        },
-                        area: { top: "30%", right: "15%", left: "15%", bottom: "30%" },
+                        name: "Live", type: "LiveStream", target: document.querySelector('#interactive'),
+                        constraints: { facingMode: "environment", width: 640, height: 480 }
                     },
-                    locator: { patchSize: "medium", halfSample: false },
-                    decoder: { 
-                        readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader", "code_39_reader"] 
-                    },
+                    decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader", "code_39_reader"] },
                     locate: true
                 }, function(err) {
                     if (err) return;
                     Quagga.start();
-                    setTimeout(initCameraCapabilities, 500);
+                    setTimeout(initCameraCapabilities, 1000);
                 });
 
                 Quagga.onDetected(function(result) {
                     let code = result.codeResult.code;
-                    if (!validarCodigo(code)) return; 
-                    if (result.codeResult.confidence < 0.8) return;
-
+                    if (!validarCodigo(code) || result.codeResult.confidence < 0.8) return;
                     if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
                     if (countResults >= 4) { buscarPrecio(code); }
                 });
             }
 
             function initCameraCapabilities() {
-                if (!track && typeof Quagga !== 'undefined') {
-                    try { track = Quagga.CameraAccess.getActiveTrack(); } catch(e){}
+                // Intentar obtener el track si aún no está definido
+                if (!track) {
+                    try {
+                        if (typeof Quagga !== 'undefined' && Quagga.CameraAccess) {
+                            track = Quagga.CameraAccess.getActiveTrack();
+                        }
+                    } catch(e) {}
                 }
-                
+
                 if (!track) return;
-                const caps = track.getCapabilities();
+
+                const caps = track.getCapabilities ? track.getCapabilities() : {};
                 
+                // Zoom
                 if (caps.zoom) {
                     const slider = document.getElementById('zoom-slider');
                     slider.disabled = false;
                     slider.min = caps.zoom.min;
                     slider.max = caps.zoom.max;
-                    slider.oninput = e => { track.applyConstraints({ advanced: [{ zoom: e.target.value }] }); };
+                    slider.oninput = (e) => {
+                        track.applyConstraints({ advanced: [{ zoom: e.target.value }] });
+                    };
                 }
-                
-                if (caps.torch) {
+
+                // Flash - Lo habilitamos si el navegador dice que existe la capacidad
+                if (caps.torch || ('torch' in caps)) {
                     document.getElementById('btn-torch').disabled = false;
+                } else {
+                    // Algunos Android no reportan caps.torch pero sí funcionan
+                    document.getElementById('btn-torch').disabled = false; 
                 }
             }
 
             function toggleTorch() {
-                if (!track) return;
-                
-                const btn = document.getElementById('btn-torch');
-                const settings = track.getSettings();
-                const currentTorch = settings.torch || false;
-                const newState = !currentTorch;
+                // Si track se perdió, intentamos recuperarlo al vuelo
+                if (!track && typeof Quagga !== 'undefined') {
+                    track = Quagga.CameraAccess.getActiveTrack();
+                }
 
+                if (!track) {
+                    alert("Cámara no lista");
+                    return;
+                }
+
+                const btn = document.getElementById('btn-torch');
+                torchActive = !torchActive;
+
+                // Aplicar el cambio a la cámara
                 track.applyConstraints({
-                    advanced: [{ torch: newState }]
+                    advanced: [{ torch: torchActive }]
                 }).then(() => {
-                    // Actualización visual del botón
-                    if (newState) {
-                        btn.classList.replace('btn-outline-warning', 'btn-warning');
+                    // Cambiar color del botón manualmente
+                    if (torchActive) {
+                        btn.classList.remove('btn-outline-warning');
+                        btn.classList.add('btn-warning');
                     } else {
-                        btn.classList.replace('btn-warning', 'btn-outline-warning');
+                        btn.classList.remove('btn-warning');
+                        btn.classList.add('btn-outline-warning');
                     }
-                }).catch(err => console.error("Error flash:", err));
+                }).catch(err => {
+                    console.error(err);
+                    // Si falla, revertimos el estado lógico
+                    torchActive = !torchActive;
+                });
             }
 
             window.onload = function() {
@@ -263,7 +272,6 @@
             #interactive video { width: 100%; height: 100%; object-fit: cover; }
             canvas.drawingBuffer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         </style>
-
     {% else %}
         <div class="alert alert-warning py-5">
             <i class="bi bi-wifi-off display-1 d-block mb-3"></i>
