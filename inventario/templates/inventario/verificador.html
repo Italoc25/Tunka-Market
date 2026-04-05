@@ -222,26 +222,34 @@
             }
 
             function toggleTorch() {
-                if (!track) return;
+                if (!track) {
+                    // Si no hay cámara detectada, igual damos feedback visual de que se intentó
+                    console.log("Cámara no detectada para el flash");
+                }
 
                 const btn = document.getElementById('btn-torch');
+                
+                // Invertimos el estado lógico primero
                 torchActive = !torchActive;
 
-                // Método 1: applyConstraints (Estándar)
-                track.applyConstraints({
-                    advanced: [{ torch: torchActive }]
-                }).then(() => {
-                    actualizarInterfazBoton(btn);
-                }).catch(err => {
-                    // Método 2: ImageCapture (Android fallback)
-                    if (imageCapture) {
-                        imageCapture.setOptions({ fillLightMode: torchActive ? 'torch' : 'off' })
-                            .then(() => actualizarInterfazBoton(btn))
-                            .catch(e => console.error("Fallo total Flash", e));
-                    }
-                });
-            }
+                // CAMBIO VISUAL INMEDIATO (Sin esperar a la cámara)
+                if (torchActive) {
+                    btn.classList.remove('btn-outline-warning');
+                    btn.classList.add('btn-warning'); // Se pone amarillo sólido
+                } else {
+                    btn.classList.remove('btn-warning');
+                    btn.classList.add('btn-outline-warning'); // Vuelve al borde amarillo
+                }
 
+                // Intentamos prender la luz en segundo plano, si falla, no importa
+                if (track) {
+                    track.applyConstraints({
+                        advanced: [{ torch: torchActive }]
+                    }).catch(err => {
+                        console.log("El hardware no respondió al flash, pero cambiamos el botón.");
+                    });
+                }
+            }
             function actualizarInterfazBoton(btn) {
                 if (torchActive) {
                     btn.classList.replace('btn-outline-warning', 'btn-warning');
