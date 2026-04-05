@@ -79,11 +79,8 @@
                 } catch (e) { }
             }
 
-            // MODIFICADO: Ahora valida EAN si tiene el largo, pero deja pasar otros códigos
             function validarCodigo(codigo) {
-                if (!/^\d+$/.test(codigo)) return false; // Solo números
-                
-                // Si es un código estándar (8, 12 o 13 dígitos), aplicamos validación matemática
+                if (!/^\d+$/.test(codigo)) return false; 
                 if (codigo.length === 8 || codigo.length === 12 || codigo.length === 13) {
                     let cadena = (codigo.length === 12) ? "0" + codigo : codigo;
                     let sum = 0;
@@ -95,8 +92,6 @@
                     let checkCalculado = (10 - (sum % 10)) % 10;
                     return checkCalculado === parseInt(reverseCode[0]);
                 }
-                
-                // Si tiene cualquier otro largo (ej: 4, 5, 6 dígitos), lo aceptamos sin validar algoritmo
                 return codigo.length > 3; 
             }
 
@@ -153,9 +148,11 @@
                     });
                     video.srcObject = stream;
                     track = stream.getVideoTracks()[0];
-                    initCameraCapabilities();
+                    
+                    video.onloadedmetadata = () => {
+                        setTimeout(initCameraCapabilities, 500);
+                    };
 
-                    // Android suele leer casi todo por defecto, mantenemos formatos comunes
                     const barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] });
                     
                     const render = async () => {
@@ -193,41 +190,22 @@
                     },
                     locator: { patchSize: "medium", halfSample: false },
                     decoder: { 
-                        // MODIFICADO: Añadimos lectores para códigos no-estándar
-                        readers: [
-                            "ean_reader", 
-                            "ean_8_reader", 
-                            "upc_reader", 
-                            "code_128_reader", 
-                            "code_39_reader"
-                        ] 
+                        readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader", "code_39_reader"] 
                     },
                     locate: true
                 }, function(err) {
                     if (err) return;
                     Quagga.start();
-                    initCameraCapabilities();
+                    setTimeout(initCameraCapabilities, 500);
                 });
 
                 Quagga.onDetected(function(result) {
                     let code = result.codeResult.code;
                     if (!validarCodigo(code)) return; 
-                    
-                    if (result.codeResult.confidence < 0.8) return; // Bajamos levemente a 0.8 para códigos difíciles
+                    if (result.codeResult.confidence < 0.8) return;
 
                     if (code === lastResult) { countResults++; } else { lastResult = code; countResults = 0; }
-                    if (countResults >= 3) { buscarPrecio(code); }
-                });
-
-                Quagga.onProcessed(function(result) {
-                    var drawingCtx = Quagga.canvas.ctx.overlay,
-                        drawingCanvas = Quagga.canvas.dom.overlay;
-                    if (result) {
-                        drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
-                        if (result.box) {
-                            Quagga.ImageDebug.drawPath(result.box, {x: 0, y: 1}, drawingCtx, {color: "#0d6efd", lineWidth: 3});
-                        }
-                    }
+                    if (countResults >= 4) { buscarPrecio(code); }
                 });
             }
 
@@ -235,8 +213,10 @@
                 if (!track && typeof Quagga !== 'undefined') {
                     try { track = Quagga.CameraAccess.getActiveTrack(); } catch(e){}
                 }
+                
                 if (!track) return;
                 const caps = track.getCapabilities();
+                
                 if (caps.zoom) {
                     const slider = document.getElementById('zoom-slider');
                     slider.disabled = false;
@@ -244,13 +224,30 @@
                     slider.max = caps.zoom.max;
                     slider.oninput = e => { track.applyConstraints({ advanced: [{ zoom: e.target.value }] }); };
                 }
-                if (caps.torch) { document.getElementById('btn-torch').disabled = false; }
+                
+                if (caps.torch) {
+                    document.getElementById('btn-torch').disabled = false;
+                }
             }
 
             function toggleTorch() {
                 if (!track) return;
-                const current = track.getSettings().torch || false;
-                track.applyConstraints({ advanced: [{ torch: !current }] });
+                
+                const btn = document.getElementById('btn-torch');
+                const settings = track.getSettings();
+                const currentTorch = settings.torch || false;
+                const newState = !currentTorch;
+
+                track.applyConstraints({
+                    advanced: [{ torch: newState }]
+                }).then(() => {
+                    // Actualización visual del botón
+                    if (newState) {
+                        btn.classList.replace('btn-outline-warning', 'btn-warning');
+                    } else {
+                        btn.classList.replace('btn-warning', 'btn-outline-warning');
+                    }
+                }).catch(err => console.error("Error flash:", err));
             }
 
             window.onload = function() {
