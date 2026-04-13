@@ -32,7 +32,8 @@ ALLOWED_HOSTS = ['tunkamarket.cl', 'www.tunkamarket.cl', 'web-production-9ffaa.u
 # Permite que Django confíe en la URL de Railway para los formularios
 CSRF_TRUSTED_ORIGINS = [
     'https://web-production-9ffaa.up.railway.app',
-    'https://*.railway.app'  # Esto cubre cualquier cambio futuro de URL en Railway
+    'https://*.railway.app', 'https://tunkamarket.cl',
+    'https://www.tunkamarket.cl',
 ]
 
 
