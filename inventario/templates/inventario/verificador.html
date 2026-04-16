@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container text-center" style="max-width: 600px;">
     <h2 class="mb-4">Verificador de Precios</h2>
-    
+   
     {% if en_tienda %}
         <div class="modal fade" id="instruccionesModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
@@ -15,7 +15,7 @@
                             </div>
                             <h4 class="fw-bold">¿Cómo usar el verificador?</h4>
                         </div>
-                        
+                       
                         <div class="text-start mb-4">
                             <div class="d-flex align-items-center mb-3">
                                 <span class="badge bg-primary rounded-circle me-3">1</span>
@@ -52,7 +52,7 @@
                     <i class="bi bi-search"></i>
                 </button>
             </div>
-            
+           
             <div style="position: relative;">
                 <div id="interactive" class="viewport shadow-sm" style="width: 100%; height: 350px; border-radius: 15px; overflow: hidden; background-color: #000; position: relative;">
                     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 150px; border: 2px solid rgba(255, 0, 0, 0.5); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); z-index: 10; border-radius: 10px; pointer-events: none;"></div>
@@ -74,7 +74,7 @@
 
             <p class="text-muted small mt-2">¿No lee el código? Intenta <b>alejar</b> el celular y aumenta el <b>zoom</b>.</p>
         </div>
-        
+       
         <div id="resultado-panel" class="mt-2 p-4 border-0 rounded-4 shadow bg-white" style="display: none;">
             <div id="res-icon-container" class="mb-3">
                 <i id="res-icon" class="bi bi-check-circle-fill text-success display-4"></i>
@@ -83,7 +83,7 @@
             <h2 id="res-nombre" class="text-dark fw-bold mt-2"></h2>
             <hr>
             <p id="res-categoria" class="badge fs-5 px-3 py-2"></p>
-            
+           
             <div class="d-grid gap-3 mt-4">
                 <button class="btn btn-lg btn-success py-3 shadow" onclick="location.reload()">
                     <i class="bi bi-camera-fill me-2"></i> Escanear otro
@@ -95,7 +95,7 @@
         </div>
 
         <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
-        
+       
         <script>
             let lastResult = null;
             let countResults = 0;
@@ -103,9 +103,7 @@
             let scannerLoop = null;
             let torchActive = false;
 
-            // LÓGICA DEL MODAL E INICIO
             window.onload = function() {
-                // Verificar si el usuario ya pidió no ver las instrucciones
                 const ocultarInstrucciones = localStorage.getItem('ocultarInstrucciones');
                 const modalElement = document.getElementById('instruccionesModal');
                 const myModal = new bootstrap.Modal(modalElement);
@@ -114,14 +112,12 @@
                     myModal.show();
                 }
 
-                // Guardar preferencia al cerrar el modal si el check está marcado
                 modalElement.addEventListener('hide.bs.modal', function () {
                     if (document.getElementById('check-no-mostrar').checked) {
                         localStorage.setItem('ocultarInstrucciones', 'true');
                     }
                 });
 
-                // Iniciar cámara
                 if ('BarcodeDetector' in window) {
                     iniciarLectorNativo();
                 } else {
@@ -145,7 +141,7 @@
             }
 
             function validarCodigo(codigo) {
-                if (!/^\d+$/.test(codigo)) return false; 
+                if (!/^\d+$/.test(codigo)) return false;
                 if (codigo.length === 8 || codigo.length === 12 || codigo.length === 13) {
                     let cadena = (codigo.length === 12) ? "0" + codigo : codigo;
                     let sum = 0;
@@ -157,7 +153,7 @@
                     let checkCalculado = (10 - (sum % 10)) % 10;
                     return checkCalculado === parseInt(reverseCode[0]);
                 }
-                return codigo.length > 3; 
+                return codigo.length > 3;
             }
 
             function buscarPrecio(codigo) {
@@ -303,7 +299,13 @@
             <i class="bi bi-wifi-off display-1 d-block mb-3"></i>
             <h4>🔒 Acceso Restringido</h4>
             <p>Conéctate al WiFi del local para usar el verificador.</p>
-            <a href="{% url 'home' %}" class="btn btn-outline-secondary mt-3">Volver al Inicio</a>
+            
+            <div class="mt-4 p-2 bg-light rounded shadow-sm">
+                <p class="text-muted small mb-1">Tu IP detectada:</p>
+                <code class="text-danger fw-bold fs-5">{{ ip_cliente }}</code>
+            </div>
+
+            <a href="{% url 'home' %}" class="btn btn-outline-secondary mt-4">Volver al Inicio</a>
         </div>
     {% endif %}
 </div>
