@@ -300,10 +300,12 @@
             <h4>🔒 Acceso Restringido</h4>
             <p>Conéctate al WiFi del local para usar el verificador.</p>
             
-            <div class="mt-4 p-2 bg-light rounded shadow-sm">
-                <p class="text-muted small mb-1">Tu IP detectada:</p>
-                <code class="text-danger fw-bold fs-5">{{ user_ip }}</code>
-            </div>
+            {% if debug_mode %}
+                <div class="mt-4 p-2 bg-light rounded shadow-sm border border-danger">
+                    <p class="text-muted small mb-1">🔧 Modo Soporte Activo - Tu IP:</p>
+                    <code class="text-danger fw-bold fs-5">{{ user_ip }}</code>
+                </div>
+            {% endif %}
 
             <a href="{% url 'home' %}" class="btn btn-outline-secondary mt-4">Volver al Inicio</a>
         </div>

@@ -2,7 +2,8 @@ from django.contrib import admin, messages
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from django.utils.html import format_html
-from .models import Producto, Categoria, Sugerencia
+# Importamos el nuevo modelo de configuración
+from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema
 
 # 1. FILTRO DE STOCK
 class StockAnomaloFilter(admin.SimpleListFilter):
@@ -90,7 +91,6 @@ class ProductoAdmin(admin.ModelAdmin):
     @admin.action(description="🚫 Agotado")
     def marcar_agotado(self, request, queryset): queryset.update(stock=0)
     
-    # MODIFICADO: Ahora limpia ambos campos para que Gemini pueda re-procesarlos
     @admin.action(description="📝 Limpiar descripciones y datos")
     def resetear_descripcion(self, request, queryset): 
         queryset.update(descripcion="", dato_curioso="")
@@ -117,3 +117,17 @@ class SugerenciaAdmin(admin.ModelAdmin):
         if obj.imagen:
             return format_html('<a href="{0}" target="_blank"><img src="{0}" style="max-width: 400px; border-radius: 10px;" /></a>', obj.imagen.url)
         return "Sin foto"
+
+# 5. CONFIGURACIÓN DEL SISTEMA 
+@admin.register(ConfiguracionSistema)
+class ConfiguracionSistemaAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'mostrar_ip_debug')
+    
+    # Esto asegura que solo pueda existir un objeto de configuración
+    def has_add_permission(self, request):
+        if ConfiguracionSistema.objects.exists():
+            return False
+        return True
+
+    def has_delete_permission(self, request, obj=None):
+        return False

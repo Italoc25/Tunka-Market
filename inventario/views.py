@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404
-from .models import Producto, Categoria, Sugerencia # Añadimos Sugerencia
+from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema
 from django.db.models import Q
 from django.http import JsonResponse, Http404, HttpResponseRedirect
 from django.contrib import messages
@@ -72,10 +72,14 @@ def verificador_precios(request):
     else:
         user_ip = request.META.get('REMOTE_ADDR')
 
+    # Obtenemos la configuración del admin (el interruptor)
+    config = ConfiguracionSistema.objects.first()
+    debug_activo = config.mostrar_ip_debug if config else False
+
     # VALIDACIÓN MEJORADA
     es_ip_valida = (
         user_ip == IPV4_TUNKA_TIENDA or 
-        user_ip == IPV4_TUNKA_RAILWAY or # Valida la IP de Railway
+        user_ip == IPV4_TUNKA_RAILWAY or 
         user_ip.startswith(PREFIJO_IPV6_TUNKA) or 
         user_ip in ['127.0.0.1', '::1']
     )
@@ -88,7 +92,8 @@ def verificador_precios(request):
 
     return render(request, 'inventario/verificador.html', {
         'en_tienda': en_tienda,
-        'user_ip': user_ip  
+        'user_ip': user_ip,
+        'debug_mode': debug_activo  # Enviamos el estado del switch al HTML
     })
 
 # 5. API para el Verificador

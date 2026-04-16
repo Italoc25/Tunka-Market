@@ -58,3 +58,15 @@ class Sugerencia(models.Model):
 
     def __str__(self):
         return f"{self.tipo} - {self.fecha_envio.strftime('%d/%m/%Y')}"
+
+# inventario/models.py
+
+class ConfiguracionSistema(models.Model):
+    mostrar_ip_debug = models.BooleanField(default=False, help_text="Activa la visualización de la IP en el verificador")
+
+    class Meta:
+        verbose_name = "Configuración del Sistema"
+        verbose_name_plural = "Configuraciones del Sistema"
+
+    def __str__(self):
+        return "Configuración General"
