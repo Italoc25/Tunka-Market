@@ -62,8 +62,8 @@ def contacto(request):
 def verificador_precios(request):
     # IPs autorizadas (Agregamos la nueva detectada por Railway)
     IPV4_TUNKA_TIENDA = "200.111.224.125"
-    IPV4_TUNKA_RAILWAY = "186.10.141.46"  # <-- Tu IP nueva
-    PREFIJO_IPV6_TUNKA = "2800:300:6b53:cbc0"
+    IPV4_TUNKA_RAILWAY = "186.10.141.46" 
+    PREFIJO_IPV6_TUNKA = "2800:300:6b51:67f0"
 
     # Obtener la IP real
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
