@@ -63,6 +63,7 @@ class Sugerencia(models.Model):
 
 class ConfiguracionSistema(models.Model):
     mostrar_ip_debug = models.BooleanField(default=False, help_text="Activa la visualización de la IP en el verificador")
+    ip_dinamica_tienda = models.CharField(max_length=45, blank=True, null=True, help_text="IP de la tienda auto-actualizada de forma dinámica")
 
     class Meta:
         verbose_name = "Configuración del Sistema"

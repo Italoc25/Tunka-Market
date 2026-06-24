@@ -60,40 +60,40 @@ def contacto(request):
 
 # 4. Verificador de Precios (Página)
 def verificador_precios(request):
-    # IPs autorizadas (Agregamos la nueva detectada por Railway)
-    IPV4_TUNKA_TIENDA = "200.111.224.125"
-    IPV4_TUNKA_RAILWAY = "186.10.141.46" 
-    PREFIJO_IPV6_TUNKA = "141.101.100.153"
-
-    # Obtener la IP real
+    # 1. Obtener la IP real del visitante (manejando proxies de Railway)
     x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded:
         user_ip = x_forwarded.split(',')[0].strip()
     else:
         user_ip = request.META.get('REMOTE_ADDR')
 
-    # Obtenemos la configuración del admin (el interruptor)
-    config = ConfiguracionSistema.objects.first()
-    debug_activo = config.mostrar_ip_debug if config else False
+    # 2. Obtener o crear la configuración del sistema en la base de datos
+    config, created = ConfiguracionSistema.objects.get_or_create(id=1)
+    debug_activo = config.mostrar_ip_debug
 
-    # VALIDACIÓN MEJORADA
+    # 3. Detectar si el usuario viene con la llave maestra
+    llave_maestra = request.GET.get('tienda') == 'ok'
+    
+    # AUTOMATIZACIÓN DEFINITIVA: 
+    # Si ingresan con ?tienda=ok, guardamos esta IP actual como la IP autorizada de la tienda
+    if llave_maestra:
+        config.ip_dinamica_tienda = user_ip
+        config.save()
+
+    # 4. VALIDACIÓN INTELIGENTE:
+    # Se permite el acceso si la IP coincide con la auto-guardada o si es localhost
     es_ip_valida = (
-        user_ip == IPV4_TUNKA_TIENDA or 
-        user_ip == IPV4_TUNKA_RAILWAY or 
-        user_ip.startswith(PREFIJO_IPV6_TUNKA) or 
+        user_ip == config.ip_dinamica_tienda or 
         user_ip in ['127.0.0.1', '::1']
     )
     
-    # La llave maestra ?tienda=ok
-    llave_maestra = request.GET.get('tienda') == 'ok'
-    
-    # Si entra por IP o por Llave, le damos acceso
+    # Acceso concedido si la IP es válida o si se acaba de usar la llave maestra
     en_tienda = es_ip_valida or llave_maestra
 
     return render(request, 'inventario/verificador.html', {
         'en_tienda': en_tienda,
         'user_ip': user_ip,
-        'debug_mode': debug_activo  # Enviamos el estado del switch al HTML
+        'debug_mode': debug_activo
     })
 
 # 5. API para el Verificador
