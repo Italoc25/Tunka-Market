@@ -145,11 +145,34 @@ def cambiar_categoria_masivo(modeladmin, request, queryset):
 # ==============================================================================
 # 3. PANEL PRODUCTOS
 # ==============================================================================
+class FiltroContenidoIncompleto(admin.SimpleListFilter):
+    title = 'Contenido Faltante'
+    parameter_name = 'faltante'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('sin_desc', 'Sin Descripción'),
+            ('sin_dato', 'Sin Dato Curioso'),
+            ('incompletos', 'Incompletos (Ambos)'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'sin_desc':
+            return queryset.filter(Q(descripcion__isnull=True) | Q(descripcion=""))
+        if self.value() == 'sin_dato':
+            return queryset.filter(Q(dato_curioso__isnull=True) | Q(dato_curioso=""))
+        if self.value() == 'incompletos':
+            return queryset.filter(
+                (Q(descripcion__isnull=True) | Q(descripcion="")) & 
+                (Q(dato_curioso__isnull=True) | Q(dato_curioso=""))
+            )
+        return queryset
+
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
     list_display = ('nombre_display', 'precio', 'stock', 'alerta_stock', 'disponible', 'categoria')
     list_editable = ('stock', 'disponible')
-    list_filter = ('disponible', 'categoria', StockAnomaloFilter) 
+    list_filter = ('disponible', 'categoria', StockAnomaloFilter, FiltroContenidoIncompleto) 
     search_fields = ('nombre', 'codigo_barras')
     
     # MODIFICADO: Agregamos el botón de IA a los campos de solo lectura
