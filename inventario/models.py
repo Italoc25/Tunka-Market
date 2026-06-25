@@ -59,7 +59,6 @@ class Sugerencia(models.Model):
     def __str__(self):
         return f"{self.tipo} - {self.fecha_envio.strftime('%d/%m/%Y')}"
 
-# inventario/models.py
 
 class ConfiguracionSistema(models.Model):
     mostrar_ip_debug = models.BooleanField(default=False, help_text="Activa la visualización de la IP en el verificador")
@@ -71,3 +70,15 @@ class ConfiguracionSistema(models.Model):
 
     def __str__(self):
         return "Configuración General"
+
+
+class ImportacionExcel(models.Model):
+    archivo = models.FileField(upload_to='importaciones/', help_text="Sube tu archivo de Excel (.xlsx) aquí")
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Importar Excel"
+        verbose_name_plural = "Importador de Excels"
+
+    def __str__(self):
+        return f"Carga del {self.fecha_subida.strftime('%d/%m/%Y a las %H:%M')}"

@@ -2,8 +2,9 @@ from django.contrib import admin, messages
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from django.utils.html import format_html
-# Importamos el nuevo modelo de configuración
 from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema
+import openpyxl
+from django.db import transaction
 
 # 1. FILTRO DE STOCK
 class StockAnomaloFilter(admin.SimpleListFilter):
@@ -131,3 +132,74 @@ class ConfiguracionSistemaAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ImportacionExcel)
+class ImportacionExcelAdmin(admin.ModelAdmin):
+    list_display = ('fecha_subida', 'archivo')
+    
+    # Interceptamos el momento de "Guardar" para ejecutar tu script
+    def save_model(self, request, obj, form, change):
+        # 1. Guardamos el archivo temporalmente
+        super().save_model(request, obj, form, change)
+        
+        # 2. Leemos el archivo directamente de la memoria
+        try:
+            workbook = openpyxl.load_workbook(obj.archivo, data_only=True)
+            sheet = workbook.active
+            
+            # Tu función de limpieza intacta
+            def limpiar_numero(valor):
+                if valor is None or str(valor).strip() == "": return 0
+                try:
+                    limpio = str(valor).replace('$', '').replace('"', '').replace('“', '').replace('”', '').strip()
+                    if ',' in limpio: limpio = limpio.split(',')[0]
+                    limpio = limpio.replace('.', '')
+                    return int(float(limpio))
+                except (ValueError, TypeError):
+                    return 0
+
+            actualizados = 0
+            creados = 0
+
+            with transaction.atomic():
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    codigo_raw = row[0]
+                    if codigo_raw is None: continue
+                    
+                    codigo_ext  = str(codigo_raw).split('.')[0].strip()
+                    nombre_ext  = str(row[1]).strip() if row[1] else "Sin Nombre"
+                    precio_ext  = limpiar_numero(row[3])
+                    stock_ext   = limpiar_numero(row[5])
+                    stk_min_ext = limpiar_numero(row[6])
+                    depto_ext   = str(row[8]).strip() if row[8] else "General"
+
+                    producto = Producto.objects.filter(codigo_barras=codigo_ext).first()
+
+                    if producto:
+                        # EXISTENTE
+                        producto.precio = precio_ext
+                        producto.stock = stock_ext
+                        producto.stock_minimo = stk_min_ext
+                        producto.save()
+                        actualizados += 1
+                    else:
+                        # NUEVO
+                        categoria_obj, _ = Categoria.objects.get_or_create(nombre=depto_ext)
+                        Producto.objects.create(
+                            codigo_barras=codigo_ext,
+                            nombre=nombre_ext,
+                            categoria=categoria_obj,
+                            precio=precio_ext,
+                            stock=stock_ext,
+                            stock_minimo=stk_min_ext,
+                            disponible=False 
+                        )
+                        creados += 1
+            
+            # Mensaje de éxito verde en la pantalla del Admin
+            messages.success(request, f'🚀 ¡Importación exitosa! Se actualizaron {actualizados} productos y se crearon {creados} nuevos.')
+
+        except Exception as e:
+            # Mensaje rojo si el Excel viene roto
+            messages.error(request, f'Error fatal al leer el Excel: {str(e)}')
