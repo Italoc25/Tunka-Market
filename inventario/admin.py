@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 from django.utils.html import format_html
-from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema
+from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema, ImportacionExcel
 import openpyxl
 from django.db import transaction
 
