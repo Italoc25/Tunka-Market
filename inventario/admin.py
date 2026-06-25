@@ -1,12 +1,121 @@
-from django.contrib import admin, messages
-from django.shortcuts import render
-from django.http import HttpResponseRedirect
-from django.utils.html import format_html
-from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema, ImportacionExcel
+# inventario/admin.py
+import os
+import time
+import requests
 import openpyxl
 from django.db import transaction
+from django.contrib import admin, messages
+from django.shortcuts import render, redirect
+from django.http import HttpResponseRedirect
+from django.utils.html import format_html
+from django.urls import path, reverse
 
+from .models import Producto, Categoria, Sugerencia, ConfiguracionSistema, ImportacionExcel
+
+# ==============================================================================
+# 🤖 FUNCIÓN AUXILIAR DE INTELIGENCIA ARTIFICIAL (GEMINI)
+# Conserva 100% tu prompt y lógica original
+# ==============================================================================
+def llamar_gemini(p):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return False, "Falta GEMINI_API_KEY en las variables de entorno de Railway."
+
+    url_list = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    modelo_detectado = "models/gemini-1.5-flash" 
+    
+    try:
+        resp = requests.get(url_list)
+        if resp.status_code == 200:
+            modelos = resp.json().get('models', [])
+            for m in modelos:
+                nombre = m.get('name')
+                if 'flash' in nombre.lower() and 'generateContent' in m.get('supportedGenerationMethods', []):
+                    modelo_detectado = nombre
+                    break
+    except:
+        pass
+
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/{modelo_detectado}:generateContent"
+    
+    tiene_desc = bool(p.descripcion and p.descripcion.strip())
+    tiene_dato = bool(p.dato_curioso and p.dato_curioso.strip())
+
+    if tiene_desc and tiene_dato:
+        return False, "El producto ya tiene descripción y dato curioso completos."
+
+    # --- TU PROMPT ORIGINAL COMPLETO ---
+    prompt_text = f"""
+    Eres el informante experto de 'Market Tunka'. Tu misión es generar fichas de producto útiles, variadas y breves. 
+    Busca información REAL en internet si es necesario para ser preciso.
+
+    PRODUCTO: {p.nombre}
+    CATEGORÍA: {p.categoria.nombre if p.categoria else 'General'}
+
+    ESTADO ACTUAL:
+    - DESCRIPCIÓN: {p.descripcion if tiene_desc else "VACÍO"}
+    - DATO CURIOSO: {p.dato_curioso if tiene_dato else "VACÍO"}
+
+    REGLAS DE CONTENIDO (APLICAR SOLO A LO QUE ESTÉ 'VACÍO'):
+    1. DESCRIPCIÓN (Máximo 25 palabras): 
+        Define el producto o su uso principal de forma sobria y real. 
+        - Si es un ingrediente, varía entre definir su origen, su función técnica o su perfil de sabor.
+        - No repitas marca, peso o formato que ya esté en el título.
+
+    2. DATO (Máximo 25 palabras): 
+        Aquí debes VARIAR. Elige CUALQUIERA de estas opciones:
+        - RECETA RÁPIDA: Si es ingrediente, enumera solo los componentes.
+        - DIFERENCIA TÉCNICA: Explicar qué lo distingue.
+        - DATO HISTÓRICO O CURIOSO: Origen del producto o una marca icónica.
+        - BENEFICIO O MARIDAJE: Beneficio de un ingrediente o con qué combina mejor.
+    
+    3. REGLA DE GASEOSAS: 
+        Si es una bebida y no especifica 'Zero/Sin Azúcar', menciona que es la fórmula clásica.
+
+    4. NO REPETIR: Si ya hay una descripción, no repitas esa info en el dato.
+
+    IMPORTANTE: Si un campo NO está 'VACÍO', devuélvelo exactamente como está.
+    Responde estrictamente en este formato:
+    DESCRIPCION: (Texto aquí)
+    DATO: (Texto aquí)
+    """
+
+    try:
+        response = requests.post(
+            endpoint, 
+            params={"key": api_key}, 
+            json={"contents": [{"parts": [{"text": prompt_text}]}]}, 
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            texto_ia = data['candidates'][0]['content']['parts'][0]['text']
+            
+            if "DATO:" in texto_ia:
+                partes = texto_ia.split("DATO:")
+                desc_limpia = partes[0].replace("DESCRIPCION:", "").strip()
+                dato_limpio = partes[1].replace("**", "").strip()
+                
+                if not tiene_desc: p.descripcion = desc_limpia
+                if not tiene_dato: p.dato_curioso = dato_limpio
+                
+                p.save()
+                return True, "Generado con éxito."
+            else:
+                return False, "Formato de IA incorrecto."
+        elif response.status_code == 429:
+            return False, "Cuota de IA alcanzada. Espera unos segundos."
+        else:
+            return False, f"Error {response.status_code}"
+
+    except Exception as e:
+        return False, str(e)
+
+
+# ==============================================================================
 # 1. FILTRO DE STOCK
+# ==============================================================================
 class StockAnomaloFilter(admin.SimpleListFilter):
     title = 'Alertas de Stock'
     parameter_name = 'anomalia'
@@ -17,7 +126,9 @@ class StockAnomaloFilter(admin.SimpleListFilter):
         if self.value() == 'critico': return queryset.filter(stock__gt=200)
         return queryset
 
+# ==============================================================================
 # 2. ACCIÓN PARA CAMBIAR CATEGORÍA
+# ==============================================================================
 def cambiar_categoria_masivo(modeladmin, request, queryset):
     if 'apply' in request.POST:
         categoria_id = request.POST.get('categoria')
@@ -27,11 +138,13 @@ def cambiar_categoria_masivo(modeladmin, request, queryset):
         return HttpResponseRedirect(request.get_full_path())
     return render(request, 'admin/cambiar_categoria_intermedio.html', {
         'productos': queryset, 
-        'categorias': Categoria.objects.all(), 
+        'categorias': Categoria.objects.all().order_by('nombre'), 
         'action': 'cambiar_categoria_masivo'
     })
 
+# ==============================================================================
 # 3. PANEL PRODUCTOS
+# ==============================================================================
 @admin.register(Producto)
 class ProductoAdmin(admin.ModelAdmin):
     list_display = ('nombre_display', 'precio', 'stock', 'alerta_stock', 'disponible', 'categoria')
@@ -39,7 +152,8 @@ class ProductoAdmin(admin.ModelAdmin):
     list_filter = ('disponible', 'categoria', StockAnomaloFilter) 
     search_fields = ('nombre', 'codigo_barras')
     
-    readonly_fields = ('ver_buscador',)
+    # MODIFICADO: Agregamos el botón de IA a los campos de solo lectura
+    readonly_fields = ('ver_buscador', 'boton_generar_ia')
     
     fieldsets = (
         ('Información Principal', {
@@ -53,12 +167,14 @@ class ProductoAdmin(admin.ModelAdmin):
             )
         }),
         ('Multimedia y Contenido', {
-            'fields': ('imagen', 'ver_buscador', 'descripcion', 'dato_curioso'),
+            # MODIFICADO: Añadimos el botón a este bloque visual
+            'fields': ('imagen', 'ver_buscador', 'boton_generar_ia', 'descripcion', 'dato_curioso'),
         }),
     )
 
     actions = [
         cambiar_categoria_masivo, 
+        'generar_descripciones_masivas', # <--- NUEVA ACCIÓN MASIVA IA
         'ocultar_productos', 
         'mostrar_productos', 
         'resetear_descripcion', 
@@ -66,6 +182,55 @@ class ProductoAdmin(admin.ModelAdmin):
         'limpiar_images_seleccionadas'
     ]
 
+    # --- LÓGICA DEL BOTÓN INDIVIDUAL ---
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:object_id>/generar-ia/',
+                self.admin_site.admin_view(self.generar_ia_individual_view),
+                name='inventario_producto_generar_ia',
+            ),
+        ]
+        return custom_urls + urls
+
+    def generar_ia_individual_view(self, request, object_id):
+        producto = self.get_object(request, object_id)
+        if producto:
+            exito, mensaje = llamar_gemini(producto)
+            if exito:
+                self.message_user(request, f"¡IA aplicada con éxito a: {producto.nombre}!", messages.SUCCESS)
+            else:
+                self.message_user(request, f"Info IA: {mensaje}", messages.WARNING)
+        return redirect('admin:inventario_producto_change', object_id)
+
+    @admin.display(description='🤖 Asistente IA')
+    def boton_generar_ia(self, obj):
+        if not obj.id: 
+            return "Guarda el producto primero"
+        url = reverse('admin:inventario_producto_generar_ia', args=[obj.id])
+        return format_html('<a href="{}" style="background: #6f42c1; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none; font-weight: bold;">✨ Auto-completar con Gemini</a>', url)
+
+    # --- LÓGICA DE LA ACCIÓN MASIVA ---
+    @admin.action(description="🤖 Generar descripciones con IA (Masivo)")
+    def generar_descripciones_masivas(self, request, queryset):
+        exitos = 0
+        omitidos = 0
+        for p in queryset:
+            exito, _ = llamar_gemini(p)
+            if exito:
+                exitos += 1
+            else:
+                omitidos += 1
+            # Pausa breve para cuidar la cuota de la API
+            time.sleep(1.5)
+        
+        if exitos > 0:
+            self.message_user(request, f"Se generaron descripciones para {exitos} productos.", messages.SUCCESS)
+        if omitidos > 0:
+            self.message_user(request, f"{omitidos} productos omitidos (ya tenían datos o hubo error).", messages.WARNING)
+
+    # --- DISPLAYS ORIGINALES ---
     @admin.display(description='🔍 Ayuda de Imagen')
     def ver_buscador(self, obj):
         if not obj.nombre: return "Guarda primero"
@@ -99,7 +264,10 @@ class ProductoAdmin(admin.ModelAdmin):
     @admin.action(description="🖼️ Limpiar imágenes")
     def limpiar_images_seleccionadas(self, request, queryset): queryset.update(imagen=None)
 
+
+# ==============================================================================
 # 4. PANEL SUGERENCIAS
+# ==============================================================================
 @admin.register(Sugerencia)
 class SugerenciaAdmin(admin.ModelAdmin):
     list_display = ('tipo_color', 'nombre', 'email', 'fecha_envio', 'ver_imagen', 'leido')
@@ -119,12 +287,14 @@ class SugerenciaAdmin(admin.ModelAdmin):
             return format_html('<a href="{0}" target="_blank"><img src="{0}" style="max-width: 400px; border-radius: 10px;" /></a>', obj.imagen.url)
         return "Sin foto"
 
-# 5. CONFIGURACIÓN DEL SISTEMA 
+
+# ==============================================================================
+# 5. CONFIGURACIÓN DEL SISTEMA
+# ==============================================================================
 @admin.register(ConfiguracionSistema)
 class ConfiguracionSistemaAdmin(admin.ModelAdmin):
     list_display = ('__str__', 'mostrar_ip_debug')
     
-    # Esto asegura que solo pueda existir un objeto de configuración
     def has_add_permission(self, request):
         if ConfiguracionSistema.objects.exists():
             return False
@@ -134,21 +304,19 @@ class ConfiguracionSistemaAdmin(admin.ModelAdmin):
         return False
 
 
+# ==============================================================================
+# 6. IMPORTADOR DE EXCELS
+# ==============================================================================
 @admin.register(ImportacionExcel)
 class ImportacionExcelAdmin(admin.ModelAdmin):
     list_display = ('fecha_subida', 'archivo')
     
-    # Interceptamos el momento de "Guardar" para ejecutar tu script
     def save_model(self, request, obj, form, change):
-        # 1. Guardamos el archivo temporalmente
         super().save_model(request, obj, form, change)
-        
-        # 2. Leemos el archivo directamente de la memoria
         try:
             workbook = openpyxl.load_workbook(obj.archivo, data_only=True)
             sheet = workbook.active
             
-            # Tu función de limpieza intacta
             def limpiar_numero(valor):
                 if valor is None or str(valor).strip() == "": return 0
                 try:
@@ -177,14 +345,12 @@ class ImportacionExcelAdmin(admin.ModelAdmin):
                     producto = Producto.objects.filter(codigo_barras=codigo_ext).first()
 
                     if producto:
-                        # EXISTENTE
                         producto.precio = precio_ext
                         producto.stock = stock_ext
                         producto.stock_minimo = stk_min_ext
                         producto.save()
                         actualizados += 1
                     else:
-                        # NUEVO
                         categoria_obj, _ = Categoria.objects.get_or_create(nombre=depto_ext)
                         Producto.objects.create(
                             codigo_barras=codigo_ext,
@@ -197,9 +363,6 @@ class ImportacionExcelAdmin(admin.ModelAdmin):
                         )
                         creados += 1
             
-            # Mensaje de éxito verde en la pantalla del Admin
-            messages.success(request, f'🚀 ¡Importación exitosa! Se actualizaron {actualizados} productos y se crearon {creados} nuevos.')
-
+            messages.success(request, f'🚀 ¡Importación exitosa! Actualizados: {actualizados} | Nuevos: {creados}.')
         except Exception as e:
-            # Mensaje rojo si el Excel viene roto
             messages.error(request, f'Error fatal al leer el Excel: {str(e)}')
