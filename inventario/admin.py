@@ -3,6 +3,7 @@ import os
 import time
 import requests
 import openpyxl
+from django.db.models import Q 
 from django.db import transaction
 from django.contrib import admin, messages
 from django.shortcuts import render, redirect
